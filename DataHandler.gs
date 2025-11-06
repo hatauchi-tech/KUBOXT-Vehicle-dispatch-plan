@@ -2,19 +2,92 @@
  * =============================================================================
  * DataHandler.gs - データアクセス層
  * =============================================================================
- * 
- * このファイルは、スプレッドシートへのデータアクセスを抽象化し、
+ * * このファイルは、スプレッドシートへのデータアクセスを抽象化し、
  * ビジネスロジックとデータ層を分離します。
- * 
- * 【設計方針】
+ * * 【設計方針】
  * - 単一データソースの原則: すべてのデータアクセスはこの層を経由
  * - エラーハンドリング: すべての関数でtry-catchを実装
  * - データ整合性: 書き込み前にバリデーションを実施
  */
 
 // =============================================================================
+// 内部ヘルパー関数
+// =============================================================================
+
+/**
+ * 依頼IDに基づいてシートの行インデックス（1始まり）を検索
+ * @param {SpreadsheetApp.Sheet} sheet - 検索対象シート
+ * @param {string} requestId - 検索する依頼ID
+ * @returns {number} 見つかった行インデックス。見つからない場合は -1
+ */
+function findRowIndexByRequestId(sheet, requestId) {
+  try {
+    const data = sheet.getRange(2, REQUEST_COLUMNS.REQUEST_ID + 1, sheet.getLastRow() - 1, 1).getValues();
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][0] === requestId) {
+        return i + 2; // ヘッダー行 + 0始まりインデックスのため +2
+      }
+    }
+    return -1;
+  } catch (error) {
+    logMessage('ERROR', 'findRowIndexByRequestId: ' + error.toString());
+    return -1;
+  }
+}
+
+// =============================================================================
 // 依頼データ関連 (T_荷主依頼データ)
 // =============================================================================
+
+/**
+ * 依頼IDで単一の依頼データを取得
+ * @param {string} requestId - 取得する依頼ID
+ * @returns {Object|null} 依頼データオブジェクト、見つからない場合はnull
+ */
+function getRequestById(requestId) {
+  try {
+    logMessage('INFO', `getRequestById: 依頼データ取得開始 (ID: ${requestId})`);
+    
+    const sheet = getSheet(SHEET_NAMES.REQUESTS);
+    const rowIndex = findRowIndexByRequestId(sheet, requestId);
+    
+    if (rowIndex === -1) {
+      logMessage('WARN', `getRequestById: 依頼が見つかりません (ID: ${requestId})`);
+      return null;
+    }
+    
+    const row = sheet.getRange(rowIndex, 1, 1, sheet.getLastColumn()).getValues()[0];
+    
+    const request = {
+      rowIndex: rowIndex,
+      requestId: row[REQUEST_COLUMNS.REQUEST_ID],
+      receivedDate: row[REQUEST_COLUMNS.RECEIVED_DATE],
+      shipper: row[REQUEST_COLUMNS.SHIPPER],
+      loadDate: row[REQUEST_COLUMNS.LOAD_DATE],
+      loadTime: row[REQUEST_COLUMNS.LOAD_TIME],
+      loadPlace1: row[REQUEST_COLUMNS.LOAD_PLACE1],
+      loadPlace2: row[REQUEST_COLUMNS.LOAD_PLACE2],
+      productName: row[REQUEST_COLUMNS.PRODUCT_NAME],
+      unloadDate: row[REQUEST_COLUMNS.UNLOAD_DATE],
+      unloadTime: row[REQUEST_COLUMNS.UNLOAD_TIME],
+      unloadPlace1: row[REQUEST_COLUMNS.UNLOAD_PLACE1],
+      unloadPlace2: row[REQUEST_COLUMNS.UNLOAD_PLACE2],
+      requestType: row[REQUEST_COLUMNS.REQUEST_TYPE],
+      vehicleNumber: row[REQUEST_COLUMNS.VEHICLE_NUMBER],
+      vehiclePlate: row[REQUEST_COLUMNS.VEHICLE_PLATE],
+      vehicleType: row[REQUEST_COLUMNS.VEHICLE_TYPE],
+      driverName: row[REQUEST_COLUMNS.DRIVER_NAME]
+    };
+    
+    logMessage('INFO', `getRequestById: 依頼データ取得成功 (ID: ${requestId})`);
+    return request;
+    
+  } catch (error) {
+    logMessage('ERROR', 'getRequestById: ' + error.toString());
+    throw new Error(ERROR_MESSAGES.LOAD_ERROR + error.message);
+  }
+}
+
 
 /**
  * すべての依頼データを取得
@@ -177,6 +250,119 @@ function createRequest(requestData) {
 }
 
 /**
+ * ★★★ NEW: 依頼データを更新
+ * @param {Object} requestData - 依頼データオブジェクト（requestIdを含む）
+ * @returns {Object} { success: boolean, message: string }
+ */
+function updateRequest(requestData) {
+  try {
+    logMessage('INFO', `updateRequest: 依頼更新開始 (ID: ${requestData.requestId})`);
+    
+    // バリデーション
+    const validation = validateRequestData(requestData);
+    if (!validation.isValid) {
+      return {
+        success: false,
+        message: ERROR_MESSAGES.VALIDATION_ERROR + validation.errors.join(', '),
+        errors: validation.errors
+      };
+    }
+    
+    // 依頼データを取得
+    const sheet = getSheet(SHEET_NAMES.REQUESTS);
+    const rowIndex = findRowIndexByRequestId(sheet, requestData.requestId);
+    
+    if (rowIndex === -1) {
+      return {
+        success: false,
+        message: '指定された依頼が見つかりません'
+      };
+    }
+    
+    // 更新する行データを構築
+    // 注意: 既存の配車情報を保持するため、現在のデータを読み込む
+    const currentRow = sheet.getRange(rowIndex, 1, 1, sheet.getLastColumn()).getValues()[0];
+    
+    const rowData = [
+      requestData.requestId,               // 依頼ID
+      requestData.receivedDate || new Date(), // 受付日
+      requestData.shipper,                 // 荷主
+      requestData.loadDate,                // 積込日
+      requestData.loadTime,                // 積込時間
+      requestData.loadPlace1,              // 積込地1
+      requestData.loadPlace2 || '',        // 積込地2
+      requestData.productName,             // 品名
+      requestData.unloadDate,              // 荷卸日
+      requestData.unloadTime,              // 荷卸時間
+      requestData.unloadPlace1,            // 荷卸地1
+      requestData.unloadPlace2 || '',      // 荷卸地2
+      requestData.requestType,             // 依頼車種
+      currentRow[REQUEST_COLUMNS.VEHICLE_NUMBER], // ナンバー（既存値を保持）
+      currentRow[REQUEST_COLUMNS.VEHICLE_PLATE],  // 車番（既存値を保持）
+      currentRow[REQUEST_COLUMNS.VEHICLE_TYPE],   // 車種（既存値を保持）
+      currentRow[REQUEST_COLUMNS.DRIVER_NAME]     // 運転手（既存値を保持）
+    ];
+    
+    // スプレッドシートを更新
+    updateRow(SHEET_NAMES.REQUESTS, rowIndex, rowData);
+    
+    logMessage('INFO', `updateRequest: 依頼を更新しました (ID: ${requestData.requestId})`);
+    
+    return {
+      success: true,
+      message: SUCCESS_MESSAGES.UPDATE_SUCCESS
+    };
+    
+  } catch (error) {
+    logMessage('ERROR', 'updateRequest: ' + error.toString());
+    return {
+      success: false,
+      message: ERROR_MESSAGES.SAVE_ERROR + error.message
+    };
+  }
+}
+
+/**
+ * ★★★ NEW: 依頼を削除
+ * @param {string} requestId - 削除する依頼ID
+ * @returns {Object} { success: boolean, message: string }
+ */
+function deleteRequest(requestId) {
+  try {
+    logMessage('INFO', `deleteRequest: 依頼削除開始 (ID: ${requestId})`);
+    
+    // 依頼データを取得
+    const sheet = getSheet(SHEET_NAMES.REQUESTS);
+    const rowIndex = findRowIndexByRequestId(sheet, requestId);
+    
+    if (rowIndex === -1) {
+      return {
+        success: false,
+        message: '指定された依頼が見つかりません'
+      };
+    }
+    
+    // 行を削除
+    sheet.deleteRow(rowIndex);
+    
+    logMessage('INFO', `deleteRequest: 依頼を削除しました (ID: ${requestId})`);
+    
+    return {
+      success: true,
+      message: SUCCESS_MESSAGES.DELETE_SUCCESS
+    };
+    
+  } catch (error) {
+    logMessage('ERROR', 'deleteRequest: ' + error.toString());
+    return {
+      success: false,
+      message: ERROR_MESSAGES.SAVE_ERROR + error.message
+    };
+  }
+}
+
+
+/**
  * 依頼に車両を割り当て
  * @param {string} requestId - 依頼ID
  * @param {string} vehicleNumber - 車両ナンバー
@@ -195,8 +381,7 @@ function assignVehicleToRequest(requestId, vehicleNumber) {
     }
     
     // 依頼データを取得
-    const allRequests = getAllRequests();
-    const targetRequest = allRequests.find(req => req.requestId === requestId);
+    const targetRequest = getRequestById(requestId); // 修正: getAllRequests -> getRequestById
     
     if (!targetRequest) {
       return {
@@ -224,6 +409,7 @@ function assignVehicleToRequest(requestId, vehicleNumber) {
     }
     
     // 車両の稼働状況をチェック（既に割り当てられているか）
+    const allRequests = getAllRequests(); // 稼働状況チェックのために全件取得
     const conflictingRequests = allRequests.filter(req => 
       req.vehicleNumber === vehicleNumber &&
       req.requestId !== requestId &&
@@ -278,8 +464,7 @@ function unassignVehicleFromRequest(requestId) {
     logMessage('INFO', `unassignVehicleFromRequest: 依頼 ${requestId} の車両割り当てを解除`);
     
     // 依頼データを取得
-    const allRequests = getAllRequests();
-    const targetRequest = allRequests.find(req => req.requestId === requestId);
+    const targetRequest = getRequestById(requestId); // 修正: getAllRequests -> getRequestById
     
     if (!targetRequest) {
       return {

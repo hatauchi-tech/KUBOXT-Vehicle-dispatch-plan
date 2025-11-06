@@ -1,15 +1,18 @@
-<!-- 依頼入力画面 (SCR-01) - コンテンツ部分のみ -->
+<!-- 依頼入力/編集画面 (SCR-01) - コンテンツ部分のみ -->
 <div class="page-header">
-  <h1 class="page-title">
+  <h1 class="page-title" id="pageTitle"> <!-- ★ MOD: ID "pageTitle" を追加 -->
     <i class="material-icons large" style="vertical-align: middle;">add_circle</i>
     依頼登録
   </h1>
-  <p class="page-subtitle">新規配送依頼を登録します</p>
+  <p class="page-subtitle" id="pageSubtitle">新規配送依頼を登録します</p> <!-- ★ MOD: ID "pageSubtitle" を追加 -->
 </div>
 
 <div class="card">
   <div class="card-content">
     <form id="requestForm" class="request-form">
+      
+      <!-- ★ NEW: 編集モード用の隠しフィールド -->
+      <input type="hidden" id="requestId" name="requestId">
 
       <!-- 基本情報セクション -->
       <div class="form-section">
@@ -124,13 +127,13 @@
 
       <!-- フォームアクション -->
       <div class="form-actions">
-        <button type="button" id="resetBtn" class="btn btn-large waves-effect waves-light grey">
+        <button type="button" id="cancelBtn" class="btn btn-large waves-effect waves-light grey"> <!-- ★ MOD: ID "resetBtn" -> "cancelBtn" -->
           <i class="material-icons left">clear</i>
-          クリア
+          <span id="cancelBtnText">クリア</span> <!-- ★ NEW: ボタンテキストspan -->
         </button>
-        <button type="submit" class="btn btn-large waves-effect waves-light blue darken-1">
+        <button type="submit" id="submitBtn" class="btn btn-large waves-effect waves-light blue darken-1"> <!-- ★ MOD: ID "submitBtn" を追加 -->
           <i class="material-icons left">save</i>
-          登録
+          <span id="submitBtnText">登録</span> <!-- ★ NEW: ボタンテキストspan -->
         </button>
       </div>
 

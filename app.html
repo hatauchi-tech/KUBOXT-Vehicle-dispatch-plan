@@ -1,7 +1,7 @@
 <script>
 /**
  * =============================================================================
- * app.js - クライアントサイドメインロジック (v3 - 根本修正版)
+ * app.js - クライアントサイドメインロジック (v3.1 - 編集・削除機能追加)
  * =============================================================================
  */
 
@@ -12,13 +12,8 @@
   // ★ サーバーサイドからの変数取得 ★
   // ===========================================================================
   
-  // ★ 修正: グローバルスコープから変数を取得
-  // (これらの変数は、呼び出し元のHTMLファイル (request-form.htmlなど) で定義されます)
   if (!window.APP_CONFIG) {
     console.error('[ERROR] APP_CONFIG が定義されていません。呼び出し元のHTMLファイルを確認してください。');
-    console.error('[ERROR] window:', window);
-    console.error('[ERROR] このエラーが発生した場合、app.htmlがAPP_CONFIGの定義より前に読み込まれています。');
-    // return を削除し、エラーを throw してアプリ全体を停止させる
     throw new Error('APP_CONFIG が定義されていません');
   }
   const CURRENT_PAGE = window.APP_CONFIG.currentPage;
@@ -39,7 +34,11 @@
     requestTypes: [],
     requests: [],
     selectedRequest: null,
-    loading: false
+    loading: false,
+    
+    // ★ NEW: フォームの編集モード管理
+    currentFormMode: 'create', // 'create' または 'edit'
+    currentEditingRequestId: null, // 編集中の依頼ID
   };
   
   // ===========================================================================
@@ -68,8 +67,6 @@
       });
     },
     
-    // ... (apiGetAllShippers から apiGetAppInfo までは既存のコードと同一) ...
-    
     /**
      * すべての荷主データを取得
      */
@@ -92,6 +89,14 @@
     async getUniqueRequestTypes() {
       const result = await this.call('apiGetUniqueRequestTypes');
       return result.data || [];
+    },
+
+    /**
+     * ★ NEW: 依頼IDで単一の依頼データを取得
+     */
+    async getRequestById(requestId) {
+      const result = await this.call('apiGetRequestById', requestId);
+      return result.data || null;
     },
     
     /**
@@ -124,6 +129,21 @@
     async createRequest(requestData) {
       const requestJson = JSON.stringify(requestData);
       return await this.call('apiCreateRequest', requestJson);
+    },
+
+    /**
+     * ★ NEW: 依頼を更新
+     */
+    async updateRequest(requestData) {
+      const requestJson = JSON.stringify(requestData);
+      return await this.call('apiUpdateRequest', requestJson);
+    },
+
+    /**
+     * ★ NEW: 依頼を削除
+     */
+    async deleteRequest(requestId) {
+      return await this.call('apiDeleteRequest', requestId);
     },
     
     /**
@@ -163,11 +183,6 @@
   // ===========================================================================
   
   const UI = {
-    // ... (showLoading, hideLoading, showToast, showError, showSuccess は既存のコードと同一) ...
-    
-    /**
-     * ローディング表示を制御
-     */
     showLoading(message = '読み込み中...') {
       AppState.loading = true;
       const loadingHtml = `
@@ -199,41 +214,33 @@
       if (overlay) {
         overlay.remove();
       }
-      // Fallback: Clean up any orphaned overlays by class name
       document.querySelectorAll('.loading-overlay').forEach(el => {
-        console.warn('[CLEANUP] Removing orphaned loading overlay');
         el.remove();
       });
       AppState.loading = false;
     },
     
-    /**
-     * トーストメッセージを表示
-     */
     showToast(message, type = 'info', duration = 3000) {
       const className = type === 'success' ? 'success' : 
                         type === 'error' ? 'error' : '';
       M.toast({ html: message, classes: className, displayLength: duration });
     },
     
-    /**
-     * エラーメッセージを表示
-     */
     showError(message) {
       this.showToast(message, 'error', 5000);
     },
     
-    /**
-     * 成功メッセージを表示
-     */
     showSuccess(message) {
       this.showToast(message, 'success', 3000);
     },
     
     /**
-     * 確認ダイアログを表示 (注: window.confirm はデバッグ用。本番ではモーダル推奨)
+     * ★ MOD: 確認ダイアログ
+     * (window.confirmはUIがブロックされるため、Materializeのモーダル利用を推奨しますが、
+     * ここでは簡潔さのため window.confirm を継続利用します)
      */
     confirm(message) {
+      // 本番環境ではカスタムモーダル（M.Modal）に置き換えることを推奨
       return window.confirm(message);
     }
   };
@@ -243,10 +250,6 @@
   // ===========================================================================
   
   const Validator = {
-    // ... (Validator モジュールは既存のコードと同一) ...
-    /**
-     * 必須チェック
-     */
     required(value, fieldName) {
       if (!value || String(value).trim() === '') {
         return `${fieldName}は必須項目です`;
@@ -254,9 +257,6 @@
       return null;
     },
     
-    /**
-     * 日付の妥当性チェック
-     */
     isValidDate(value, fieldName) {
       if (!value) {
         return `${fieldName}を入力してください`;
@@ -268,9 +268,6 @@
       return null;
     },
     
-    /**
-     * 日付範囲チェック
-     */
     dateRange(startDate, endDate, startFieldName, endFieldName) {
       const start = new Date(startDate);
       const end = new Date(endDate);
@@ -280,9 +277,6 @@
       return null;
     },
     
-    /**
-     * フォームバリデーション
-     */
     validateForm(formData, rules) {
       const errors = [];
       for (const [field, rule] of Object.entries(rules)) {
@@ -305,10 +299,6 @@
   // ===========================================================================
   
   const Utils = {
-    // ... (Utils モジュールは既存のコードと同一) ...
-    /**
-     * 日付を yyyy-MM-dd 形式でフォーマット
-     */
     formatDate(date) {
       if (!date) return '';
       const d = new Date(date);
@@ -319,8 +309,16 @@
     },
     
     /**
-     * 日付を yyyy年MM月dd日 形式でフォーマット
+     * ★ NEW: 時刻を HH:mm 形式でフォーマット
      */
+    formatTime(time) {
+      if (!time) return '';
+      const d = new Date(time);
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      return `${hours}:${minutes}`;
+    },
+    
     formatDateJP(date) {
       if (!date) return '';
       const d = new Date(date);
@@ -330,24 +328,15 @@
       return `${year}年${month}月${day}日`;
     },
     
-    /**
-     * 今日の日付を取得
-     */
     getToday() {
       return this.formatDate(new Date());
     },
     
-    /**
-     * 配列をフィルタリング
-     */
     filterArray(array, filterFn) {
       if (!Array.isArray(array)) return [];
       return array.filter(filterFn);
     },
     
-    /**
-     * 配列をソート
-     */
     sortArray(array, key, ascending = true) {
       if (!Array.isArray(array)) return [];
       return [...array].sort((a, b) => {
@@ -359,16 +348,10 @@
       });
     },
     
-    /**
-     * オブジェクトをクローン
-     */
     cloneObject(obj) {
       return JSON.parse(JSON.stringify(obj));
     },
     
-    /**
-     * 要素を表示/非表示
-     */
     toggleElement(elementId, show) {
       const element = document.getElementById(elementId);
       if (element) {
@@ -376,9 +359,6 @@
       }
     },
     
-    /**
-     * select要素にオプションを追加
-     */
     populateSelect(selectId, options, valueKey, textKey, placeholder = '選択してください') {
       const select = document.getElementById(selectId);
       if (!select) return;
@@ -392,60 +372,69 @@
       M.FormSelect.init(select);
     },
     
-    /**
-     * フォームをクリア
-     */
     clearForm(formId) {
       const form = document.getElementById(formId);
       if (form) {
         form.reset();
+        
+        // 隠しフィールドもクリア
+        const hiddenId = document.getElementById('requestId');
+        if (hiddenId) hiddenId.value = '';
+
         const selects = form.querySelectorAll('select');
         selects.forEach(select => {
           M.FormSelect.init(select);
         });
+        
+        // Materializeのテキストフィールドのラベルをリセット
         const labels = form.querySelectorAll('label');
         labels.forEach(label => {
           label.classList.remove('active');
+        });
+        // Date/Timeピッカーのラベルはactiveを維持
+        const datePickers = form.querySelectorAll('.datepicker, .timepicker');
+        datePickers.forEach(picker => {
+          const label = picker.nextElementSibling;
+          if(label) label.classList.add('active');
         });
       }
     }
   };
   
   // ===========================================================================
-  // ★ NEW: ナビゲーションモジュール ★
+  // ナビゲーションモジュール
   // ===========================================================================
   
   const Navigation = {
     _navigating: false,
+    _currentState: {}, // ★ NEW: ページ遷移時の状態を保持
 
     /**
-     * ★★★ SPA方式: ページ遷移を実行（google.script.runを使用） ★★★
+     * ★ MOD: ページ遷移に state を追加
      */
-    navigateToPage(pageName, meta = { source: 'unknown' }) {
-      console.log('[SPA] navigateToPage called with:', pageName, 'source:', meta.source);
-      console.log('[SPA] Current page:', AppState.currentPage);
+    navigateToPage(pageName, state = {}, meta = { source: 'unknown' }) {
+      console.log('[SPA] navigateToPage called with:', pageName, 'state:', state, 'source:', meta.source);
 
-      // 二重遷移を防止
       if (this._navigating) {
         console.log('[WARN] Navigation already in progress, ignoring');
         return;
       }
 
-      // 同一ページの場合はスキップ
-      if (pageName === AppState.currentPage) {
-        console.log('[SPA] Already on page:', pageName);
+      // 同一ページでも state が異なる場合は遷移を許可
+      if (pageName === AppState.currentPage && JSON.stringify(state) === JSON.stringify(this._currentState)) {
+        console.log('[SPA] Already on page with same state:', pageName);
         return;
       }
 
       this._navigating = true;
       UI.showLoading('ページを読み込んでいます...');
+      
+      this._currentState = state; // ★ NEW: stateを保存
 
-      // ★★★ SPA方式: google.script.runでサーバーからHTMLを取得 ★★★
       google.script.run
         .withSuccessHandler((html) => {
           console.log('[SPA] Page content loaded successfully for:', pageName);
 
-          // コンテンツを入れ替え
           const contentDiv = document.getElementById('page-content');
           if (contentDiv) {
             contentDiv.innerHTML = html;
@@ -457,14 +446,11 @@
             return;
           }
 
-          // ステート更新
           AppState.currentPage = pageName;
-
-          // ナビゲーションバーのアクティブ状態を更新
           this.updateActiveNavLinks(pageName);
 
-          // ページ固有の初期化を実行
-          App.initPage().then(() => {
+          // ★ MOD: ページ固有の初期化に state を渡す
+          App.initPage(this._currentState).then(() => {
             UI.hideLoading();
             this._navigating = false;
             console.log('[SPA] Navigation completed successfully to:', pageName);
@@ -484,18 +470,13 @@
         .getPageContent(pageName);
     },
 
-    /**
-     * ナビゲーションバーのアクティブ状態を更新
-     */
     updateActiveNavLinks(activePage) {
       console.log('[SPA] Updating active nav links for:', activePage);
 
-      // 全てのナビリンクからactiveクラスを削除
       document.querySelectorAll('nav li').forEach(li => {
         li.classList.remove('active');
       });
 
-      // アクティブページのリンクにactiveクラスを追加
       document.querySelectorAll(`nav a[data-page="${activePage}"]`).forEach(link => {
         const li = link.closest('li');
         if (li) {
@@ -504,13 +485,9 @@
       });
     },
 
-    /**
-     * すべてのナビゲーションリンクにイベントリスナーを設定
-     */
     setupEventListeners() {
       console.log('[SPA] Setting up navigation event listeners');
 
-      // 共通のクリックハンドラ（isTrustedガード付き）
       const onClickNav = (e) => {
         console.log('[DEBUG] Click event:', {
           isTrusted: e.isTrusted,
@@ -518,7 +495,6 @@
           id: e.target.id
         });
 
-        // ★★★ 重要: ユーザー操作以外（Materialize等の自動クリック）を無視 ★★★
         if (!e.isTrusted) {
           console.log('[WARN] Ignoring non-user click (isTrusted=false)');
           return;
@@ -530,17 +506,15 @@
         const pageName = link.getAttribute('data-page') || 'dispatch-plan';
 
         console.log('[SPA] User clicked nav link for page:', pageName);
-        this.navigateToPage(pageName, { source: 'user-click' });
+        this.navigateToPage(pageName, {}, { source: 'user-click' }); // ★ MOD: 空の state を渡す
       };
 
-      // ブランドロゴ (ホームに戻る)
       const brandLogo = document.getElementById('brandLogo');
       if (brandLogo) {
         console.log('[DEBUG] Setting up brandLogo click listener');
         brandLogo.addEventListener('click', onClickNav, { capture: true });
       }
 
-      // ヘッダーとサイドナビのリンク
       const navLinks = document.querySelectorAll('a[data-page]');
       console.log('[DEBUG] Found', navLinks.length, 'navigation links');
       navLinks.forEach((link, index) => {
@@ -558,27 +532,17 @@
   // ===========================================================================
   
   const App = {
-    /**
-     * アプリケーション初期化
-     */
     async init() {
       console.log('App initializing...');
 
       try {
         UI.showLoading('アプリケーションを初期化中...');
-
-        // ★★★ 重要: ナビゲーションイベントリスナーを最優先で設定 ★★★
-        // Materialize初期化前に設定することで、自動クリックをキャプチャできる
         this.setupEventListeners();
-
-        // Materialize コンポーネントの初期化
         this.initMaterialize();
-
-        // マスタデータの読み込み
         await this.loadMasterData();
-
-        // ページの初期化
-        await this.initPage();
+        
+        // ★ MOD: 起動時のページ初期化にも state を渡す
+        await this.initPage(Navigation._currentState);
 
         UI.hideLoading();
         console.log('App initialized successfully');
@@ -590,37 +554,21 @@
       }
     },
     
-    /**
-     * Materialize コンポーネントの初期化
-     * ★★★ M.AutoInit()は使わず、必要なコンポーネントのみ手動初期化 ★★★
-     */
     initMaterialize() {
       console.log('[DEBUG] Initializing Materialize components manually');
 
-      // Sidenav
       const sidenavElems = document.querySelectorAll('.sidenav');
-      if (sidenavElems.length > 0) {
-        console.log('[DEBUG] Initializing', sidenavElems.length, 'sidenav elements');
-        M.Sidenav.init(sidenavElems);
-      }
+      if (sidenavElems.length > 0) M.Sidenav.init(sidenavElems);
 
-      // Select
       const selectElems = document.querySelectorAll('select');
-      if (selectElems.length > 0) {
-        console.log('[DEBUG] Initializing', selectElems.length, 'select elements');
-        M.FormSelect.init(selectElems);
-      }
+      if (selectElems.length > 0) M.FormSelect.init(selectElems);
 
-      // Datepicker
       const datepickerElems = document.querySelectorAll('.datepicker');
       if (datepickerElems.length > 0) {
-        console.log('[DEBUG] Initializing', datepickerElems.length, 'datepicker elements');
         M.Datepicker.init(datepickerElems, {
-          format: 'yyyy-mm-dd',
-          autoClose: true,
+          format: 'yyyy-mm-dd', autoClose: true,
           i18n: {
-            cancel: 'キャンセル',
-            done: '選択',
+            cancel: 'キャンセル', done: '選択',
             months: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
             monthsShort: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
             weekdays: ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'],
@@ -630,59 +578,36 @@
         });
       }
 
-      // Timepicker
       const timepickerElems = document.querySelectorAll('.timepicker');
       if (timepickerElems.length > 0) {
-        console.log('[DEBUG] Initializing', timepickerElems.length, 'timepicker elements');
         M.Timepicker.init(timepickerElems, {
           twelveHour: false,
-          i18n: {
-            cancel: 'キャンセル',
-            done: '選択'
-          }
+          i18n: { cancel: 'キャンセル', done: '選択' }
         });
       }
 
-      // Modal
       const modalElems = document.querySelectorAll('.modal');
-      if (modalElems.length > 0) {
-        console.log('[DEBUG] Initializing', modalElems.length, 'modal elements');
-        M.Modal.init(modalElems);
-      }
+      if (modalElems.length > 0) M.Modal.init(modalElems);
 
-      // Tabs
       const tabsElems = document.querySelectorAll('.tabs');
-      if (tabsElems.length > 0) {
-        console.log('[DEBUG] Initializing', tabsElems.length, 'tabs elements');
-        M.Tabs.init(tabsElems);
-      }
-
-      console.log('[DEBUG] Materialize initialization completed');
+      if (tabsElems.length > 0) M.Tabs.init(tabsElems);
+      
+      // ★ NEW: Materializeのテキストフィールドを更新（編集フォーム用）
+      M.updateTextFields();
     },
     
-    /**
-     * マスタデータの読み込み
-     */
     async loadMasterData() {
       console.log('Loading master data...');
-      
       try {
         const [shippers, vehicles, requestTypes] = await Promise.all([
           API.getAllShippers(),
           API.getAllVehicles(),
           API.getUniqueRequestTypes()
         ]);
-        
         AppState.shippers = shippers;
         AppState.vehicles = vehicles;
         AppState.requestTypes = requestTypes;
-        
-        console.log('Master data loaded:', {
-          shippers: shippers.length,
-          vehicles: vehicles.length,
-          requestTypes: requestTypes.length
-        });
-        
+        console.log('Master data loaded');
       } catch (error) {
         console.error('Failed to load master data:', error);
         throw new Error('マスタデータの読み込みに失敗しました');
@@ -690,20 +615,20 @@
     },
     
     /**
-     * ページの初期化
+     * ★ MOD: ページの初期化に state を渡す
      */
-    async initPage() {
+    async initPage(state = {}) {
       const page = AppState.currentPage;
-      console.log('Initializing page:', page);
+      console.log('Initializing page:', page, 'with state:', state);
       
       switch (page) {
         case 'request-form':
-          await RequestForm.init();
+          await RequestForm.init(state); // ★ MOD
           break;
         case 'request-list':
           await RequestList.init();
           break;
-        case 'dispatch-plan': // ★ 'dashboard' から修正
+        case 'dispatch-plan':
           await DispatchPlan.init();
           break;
         default:
@@ -711,14 +636,8 @@
       }
     },
     
-    /**
-     * グローバルイベントリスナーの設定
-     */
     setupEventListeners() {
-      // ★ ここでナビゲーションを初期化
       Navigation.setupEventListeners();
-      
-      // ★ 他のグローバルリスナー（もしあれば）
     }
   };
   
@@ -728,70 +647,178 @@
   
   // 依頼入力画面モジュール
   const RequestForm = {
-    // ... (init, populateFormData, setupEventListeners, handleSubmit, getFormData, validateFormData, handleReset は既存のコードと同一) ...
-    async init() {
-      console.log('RequestForm init');
-      this.populateFormData();
+    /**
+     * ★ MOD: initがstateを受け取るように変更
+     */
+    async init(state = {}) {
+      console.log('RequestForm init with state:', state);
+      
+      // フォームの状態を設定
+      if (state.mode === 'edit' && state.requestId) {
+        AppState.currentFormMode = 'edit';
+        AppState.currentEditingRequestId = state.requestId;
+      } else {
+        AppState.currentFormMode = 'create';
+        AppState.currentEditingRequestId = null;
+      }
+      
       this.setupEventListeners();
+      this.setupFormUI(); // ★ UIを先に設定
+      await this.populateFormData(); // ★ データを後に読み込む
+    },
+
+    /**
+     * ★ NEW: フォームのUI（タイトル、ボタン）をモードに応じて設定
+     */
+    setupFormUI() {
+      const title = document.getElementById('pageTitle');
+      const subtitle = document.getElementById('pageSubtitle');
+      const submitBtnText = document.getElementById('submitBtnText');
+      const cancelBtnText = document.getElementById('cancelBtnText');
+
+      if (AppState.currentFormMode === 'edit') {
+        if (title) title.innerHTML = '<i class="material-icons large" style="vertical-align: middle;">edit</i> 依頼編集';
+        if (subtitle) subtitle.textContent = `依頼ID: ${AppState.currentEditingRequestId} の内容を編集します`;
+        if (submitBtnText) submitBtnText.textContent = '更新';
+        if (cancelBtnText) cancelBtnText.textContent = 'キャンセル';
+      } else {
+        if (title) title.innerHTML = '<i class="material-icons large" style="vertical-align: middle;">add_circle</i> 依頼登録';
+        if (subtitle) subtitle.textContent = '新規配送依頼を登録します';
+        if (submitBtnText) submitBtnText.textContent = '登録';
+        if (cancelBtnText) cancelBtnText.textContent = 'クリア';
+      }
     },
     
-    populateFormData() {
+    /**
+     * ★ MOD: フォームのデータ入力（編集モード対応）
+     */
+    async populateFormData() {
+      // 共通のマスタデータを設定
       Utils.populateSelect('shipper', AppState.shippers, 'shipperId', 'shipperName');
       Utils.populateSelect('requestType', AppState.requestTypes.map(type => ({
         value: type,
         label: type
       })), 'value', 'label');
       
-      const receivedDateInput = document.getElementById('receivedDate');
-      if (receivedDateInput) {
-        receivedDateInput.value = Utils.getToday();
-        M.Datepicker.init(receivedDateInput); // M.AutoInit() の代わりに手動で初期化
+      if (AppState.currentFormMode === 'edit') {
+        // 編集モード：既存データを読み込む
+        try {
+          UI.showLoading('依頼データを読み込み中...');
+          const data = await API.getRequestById(AppState.currentEditingRequestId);
+          if (data) {
+            document.getElementById('requestId').value = data.requestId;
+            document.getElementById('receivedDate').value = Utils.formatDate(data.receivedDate);
+            document.getElementById('shipper').value = data.shipper; // ★ 注意: shipperIdではなくshipperName
+            document.getElementById('productName').value = data.productName;
+            document.getElementById('requestType').value = data.requestType;
+            document.getElementById('loadDate').value = Utils.formatDate(data.loadDate);
+            document.getElementById('loadTime').value = data.loadTime; // HH:mm
+            document.getElementById('loadPlace1').value = data.loadPlace1;
+            document.getElementById('loadPlace2').value = data.loadPlace2;
+            document.getElementById('unloadDate').value = Utils.formatDate(data.unloadDate);
+            document.getElementById('unloadTime').value = data.unloadTime; // HH:mm
+            document.getElementById('unloadPlace1').value = data.unloadPlace1;
+            document.getElementById('unloadPlace2').value = data.unloadPlace2;
+            
+            // Materializeのselectを更新
+            const selects = document.querySelectorAll('select');
+            M.FormSelect.init(selects);
+            
+            // Materializeのラベルをアクティブ化
+            M.updateTextFields();
+
+          } else {
+            UI.showError('依頼データの読み込みに失敗しました');
+          }
+          UI.hideLoading();
+        } catch (error) {
+          console.error('Load request data error:', error);
+          UI.hideLoading();
+          UI.showError('依頼データの読み込みに失敗しました: ' + error.message);
+        }
+      } else {
+        // 新規登録モード：受付日を今日に設定
+        const receivedDateInput = document.getElementById('receivedDate');
+        if (receivedDateInput) {
+          receivedDateInput.value = Utils.getToday();
+        }
+        // Materializeのラベルをアクティブ化
+        M.updateTextFields();
       }
     },
     
     setupEventListeners() {
       const form = document.getElementById('requestForm');
       if (form) {
+        // 既存のリスナーを削除（念のため）
+        form.removeEventListener('submit', this.handleSubmit);
         form.addEventListener('submit', (e) => this.handleSubmit(e));
       }
       
-      const resetBtn = document.getElementById('resetBtn');
-      if (resetBtn) {
-        resetBtn.addEventListener('click', () => this.handleReset());
+      const cancelBtn = document.getElementById('cancelBtn');
+      if (cancelBtn) {
+        // 既存のリスナーを削除（念のため）
+        cancelBtn.removeEventListener('click', this.handleCancel);
+        cancelBtn.addEventListener('click', () => this.handleCancel());
       }
     },
     
+    /**
+     * ★ MOD: 送信処理（新規・編集を分岐）
+     */
     async handleSubmit(e) {
       e.preventDefault();
+      
+      const formData = this.getFormData();
+      const errors = this.validateFormData(formData);
+      
+      if (errors.length > 0) {
+        UI.showError(errors.join('\n'));
+        return;
+      }
+      
       try {
-        UI.showLoading('依頼を登録中...');
-        const formData = this.getFormData();
-        const errors = this.validateFormData(formData);
-        
-        if (errors.length > 0) {
+        if (AppState.currentFormMode === 'edit') {
+          // 更新処理
+          UI.showLoading('依頼を更新中...');
+          const result = await API.updateRequest(formData);
           UI.hideLoading();
-          UI.showError(errors.join('\n'));
-          return;
-        }
-        
-        const result = await API.createRequest(formData);
-        UI.hideLoading();
-        
-        if (result.success) {
-          UI.showSuccess('依頼を登録しました (ID: ' + result.requestId + ')');
-          this.handleReset();
+          
+          if (result.success) {
+            UI.showSuccess('依頼を更新しました (ID: ' + formData.requestId + ')');
+            Navigation.navigateToPage('request-list', {}, { source: 'form-submit' });
+          } else {
+            UI.showError('依頼の更新に失敗しました: ' + result.message);
+          }
+          
         } else {
-          UI.showError('依頼の登録に失敗しました: ' + result.message);
+          // 新規登録処理
+          UI.showLoading('依頼を登録中...');
+          const result = await API.createRequest(formData);
+          UI.hideLoading();
+          
+          if (result.success) {
+            UI.showSuccess('依頼を登録しました (ID: ' + result.requestId + ')');
+            Utils.clearForm('requestForm');
+            this.setupFormUI(); // UIをリセット
+            this.populateFormData(); // 受付日を再設定
+          } else {
+            UI.showError('依頼の登録に失敗しました: ' + result.message);
+          }
         }
       } catch (error) {
         console.error('Submit error:', error);
         UI.hideLoading();
-        UI.showError('依頼の登録に失敗しました: ' + error.message);
+        UI.showError('処理に失敗しました: ' + error.message);
       }
     },
     
+    /**
+     * ★ MOD: getFormDataがrequestIdを含むように
+     */
     getFormData() {
       return {
+        requestId: document.getElementById('requestId').value, // ★ NEW
         receivedDate: document.getElementById('receivedDate').value,
         shipper: document.getElementById('shipper').value,
         loadDate: document.getElementById('loadDate').value,
@@ -829,13 +856,20 @@
       return errors;
     },
     
-    handleReset() {
-      if (UI.confirm('入力内容をクリアしますか?')) {
-        Utils.clearForm('requestForm');
-        const receivedDateInput = document.getElementById('receivedDate');
-        if (receivedDateInput) {
-          receivedDateInput.value = Utils.getToday();
-          M.Datepicker.init(receivedDateInput); // 再初期化
+    /**
+     * ★ MOD: キャンセル・クリア処理
+     */
+    handleCancel() {
+      if (AppState.currentFormMode === 'edit') {
+        // 編集モード時は一覧に戻る
+        if (UI.confirm('編集をキャンセルして一覧に戻りますか?')) {
+          Navigation.navigateToPage('request-list', {}, { source: 'form-cancel' });
+        }
+      } else {
+        // 新規登録モード時はフォームをクリア
+        if (UI.confirm('入力内容をクリアしますか?')) {
+          Utils.clearForm('requestForm');
+          this.populateFormData(); // 受付日を再設定
         }
       }
     }
@@ -843,17 +877,13 @@
   
   // 依頼一覧モジュール
   const RequestList = {
-    // ... (init, loadRequests, renderTable は既存のコードと同一) ...
-    // ★ setupEventListeners にロジックを追加
-    
     async init() {
       console.log('RequestList init');
-      this.setupEventListeners(); // ★ データをロードする前にリスナーを設定
-      this.populateFilters(); // ★ フィルタードロップダウンを設定
+      this.setupEventListeners();
+      this.populateFilters();
       await this.loadRequests();
     },
 
-    // ★ NEW: フィルタードロップダウンを設定
     populateFilters() {
       Utils.populateSelect('filterShipper', AppState.shippers, 'shipperId', 'shipperName', 'すべての荷主');
     },
@@ -864,7 +894,7 @@
         const requests = await API.getAllRequests();
         AppState.requests = requests;
         this.renderTable(requests);
-        this.updateRequestCount(requests.length); // ★ 件数を更新
+        this.updateRequestCount(requests.length);
         UI.hideLoading();
       } catch (error) {
         console.error('Load requests error:', error);
@@ -873,17 +903,39 @@
       }
     },
     
+    /**
+     * ★ MOD: テーブル描画（編集・削除ボタン追加）
+     */
     renderTable(requests) {
       const tbody = document.getElementById('requestTableBody');
       if (!tbody) return;
       
       if (requests.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center">データがありません</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center">データがありません</td></tr>';
         return;
       }
       
-      tbody.innerHTML = requests.map(req => `
+      // ★ MOD: 依頼日（loadDate）でソート（新しいものが上）
+      const sortedRequests = Utils.sortArray(requests, 'loadDate', false);
+      
+      tbody.innerHTML = sortedRequests.map(req => `
         <tr>
+          <!-- ★ NEW: 操作ボタン -->
+          <td class="table-actions" style="min-width: 120px;">
+            <button class="btn-small waves-effect waves-light blue edit-btn" data-request-id="${req.requestId}" title="編集">
+              <i class="material-icons">edit</i>
+            </button>
+            <button class="btn-small waves-effect waves-light red delete-btn" data-request-id="${req.requestId}" title="削除">
+              <i class="material-icons">delete</i>
+            </button>
+          </td>
+          
+          <!-- ステータス -->
+          <td>
+            ${req.vehicleNumber 
+              ? '<span class="chip chip-assigned">配車済</span>' 
+              : '<span class="chip chip-unassigned">未配車</span>'}
+          </td>
           <td>${req.requestId}</td>
           <td>${Utils.formatDateJP(req.loadDate)}</td>
           <td>${req.shipper}</td>
@@ -892,17 +944,14 @@
           <td>${req.requestType}</td>
           <td>${req.vehicleNumber || '-'}</td>
           <td>${req.driverName || '-'}</td>
-          <td>
-            ${req.vehicleNumber 
-              ? '<span class="chip chip-assigned">配車済</span>' 
-              : '<span class="chip chip-unassigned">未配車</span>'}
-          </td>
         </tr>
       `).join('');
     },
     
+    /**
+     * ★ MOD: イベントリスナー（編集・削除ボタン対応）
+     */
     setupEventListeners() {
-      // ★ フィルターボタンのイベントリスナー
       const applyBtn = document.getElementById('applyFilterBtn');
       if (applyBtn) {
         applyBtn.addEventListener('click', () => this.applyFilters());
@@ -912,9 +961,25 @@
       if (resetBtn) {
         resetBtn.addEventListener('click', () => this.resetFilters());
       }
+      
+      // ★ NEW: テーブルのイベント委譲
+      const tableBody = document.getElementById('requestTableBody');
+      if (tableBody) {
+        tableBody.addEventListener('click', (e) => {
+          const editBtn = e.target.closest('.edit-btn');
+          const deleteBtn = e.target.closest('.delete-btn');
+          
+          if (editBtn) {
+            const requestId = editBtn.dataset.requestId;
+            this.handleEditClick(requestId);
+          } else if (deleteBtn) {
+            const requestId = deleteBtn.dataset.requestId;
+            this.handleDeleteClick(requestId);
+          }
+        });
+      }
     },
 
-    // ★ フィルター適用関数 (request-list.html から移動)
     applyFilters() {
       if (!AppState.requests) return;
       
@@ -932,8 +997,7 @@
         filtered = filtered.filter(req => req.loadDate <= endDate);
       }
       if (shipper) {
-        // ★ 修正: shipperId で比較
-        filtered = filtered.filter(req => req.shipperId === shipper);
+        filtered = filtered.filter(req => req.shipper === shipper); // ★ MOD: shipperId ではなく shipper (name)
       }
       if (status === 'assigned') {
         filtered = filtered.filter(req => req.vehicleNumber);
@@ -945,7 +1009,6 @@
       this.updateRequestCount(filtered.length);
     },
     
-    // ★ フィルターリセット関数 (request-list.html から移動)
     resetFilters() {
       document.getElementById('filterStartDate').value = '';
       document.getElementById('filterEndDate').value = '';
@@ -959,28 +1022,61 @@
       this.updateRequestCount(AppState.requests.length);
     },
 
-    // ★ 件数表示更新関数 (request-list.html から移動)
     updateRequestCount(count) {
       const countElem = document.getElementById('requestCount');
       if (countElem) {
         countElem.textContent = `全 ${count} 件`;
+      }
+    },
+    
+    /**
+     * ★ NEW: 編集ボタンクリック処理
+     */
+    handleEditClick(requestId) {
+      console.log('Edit clicked:', requestId);
+      Navigation.navigateToPage('request-form', { 
+        mode: 'edit', 
+        requestId: requestId 
+      }, { source: 'list-edit-btn' });
+    },
+    
+    /**
+     * ★ NEW: 削除ボタンクリック処理
+     */
+    async handleDeleteClick(requestId) {
+      console.log('Delete clicked:', requestId);
+      if (!UI.confirm(`依頼ID: ${requestId} を削除しますか？\nこの操作は元に戻せません。`)) {
+        return;
+      }
+      
+      try {
+        UI.showLoading('依頼を削除中...');
+        const result = await API.deleteRequest(requestId);
+        UI.hideLoading();
+        
+        if (result.success) {
+          UI.showSuccess('依頼を削除しました');
+          await this.loadRequests(); // 一覧を再読み込み
+        } else {
+          UI.showError('依頼の削除に失敗しました: ' + result.message);
+        }
+      } catch (error) {
+        console.error('Delete request error:', error);
+        UI.hideLoading();
+        UI.showError('依頼の削除に失敗しました: ' + error.message);
       }
     }
   };
   
   // 配車計画モジュール
   const DispatchPlan = {
-    // ... (init, loadRequests, renderRequests は既存のコードと同一) ...
-    // ★ setupEventListeners にロジックを追加
-    
     async init() {
       console.log('DispatchPlan init');
-      this.setupEventListeners(); // ★ データをロードする前にリスナーを設定
-      this.populateFilters(); // ★ フィルタードロップダウンを設定
+      this.setupEventListeners();
+      this.populateFilters();
       await this.loadRequests();
     },
 
-    // ★ NEW: フィルタードロップダウンを設定
     populateFilters() {
       Utils.populateSelect('planFilterShipper', AppState.shippers, 'shipperId', 'shipperName', 'すべての荷主');
       Utils.populateSelect('planFilterType', AppState.requestTypes.map(type => ({
@@ -994,8 +1090,7 @@
         UI.showLoading('依頼データを読み込み中...');
         const requests = await API.getAllRequests();
         AppState.requests = requests;
-        // ★ デフォルトでは未配車のみ表示
-        this.applyPlanFilters();
+        this.applyPlanFilters(); // デフォルトフィルター（未配車のみ）を適用
         UI.hideLoading();
       } catch (error) {
         console.error('Load requests error:', error);
@@ -1018,7 +1113,10 @@
         return;
       }
       
-      container.innerHTML = requests.map(req => `
+      // ★ MOD: 依頼日（loadDate）でソート（古いものが上）
+      const sortedRequests = Utils.sortArray(requests, 'loadDate', true);
+      
+      container.innerHTML = sortedRequests.map(req => `
         <div class="request-card" data-request-id="${req.requestId}">
           <div class="request-card-header">
             <span class="request-id">${req.requestId}</span>
@@ -1038,7 +1136,6 @@
     },
     
     setupEventListeners() {
-      // ★ dispatch-plan.html からロジックを移動
       const applyBtn = document.getElementById('planApplyFilterBtn');
       if (applyBtn) {
         applyBtn.addEventListener('click', () => this.applyPlanFilters());
@@ -1066,8 +1163,6 @@
       }
     },
     
-    // ★ 以下、dispatch-plan.html から移動した関数
-    
     applyPlanFilters() {
       if (!AppState.requests) return;
       
@@ -1085,8 +1180,7 @@
         filtered = filtered.filter(req => req.loadDate === date);
       }
       if (shipper) {
-        // ★ 修正: shipperId で比較
-        filtered = filtered.filter(req => req.shipperId === shipper);
+        filtered = filtered.filter(req => req.shipper === shipper); // ★ MOD: shipperId ではなく shipper (name)
       }
       if (type) {
         filtered = filtered.filter(req => req.requestType === type);
@@ -1210,8 +1304,8 @@
         
         if (result.success) {
           UI.showSuccess('車両を割り当てました');
-          await this.loadRequests(); // データを再読み込み
-          this.cancelVehicleSelection(); // パネルを閉じる
+          await this.loadRequests();
+          this.cancelVehicleSelection();
         } else {
           UI.showError('車両の割り当てに失敗しました: ' + result.message);
         }
@@ -1247,21 +1341,18 @@
   window.DispatchPlan = DispatchPlan;
   
   // ===========================================================================
-  // DOMContentLoaded イベント (★ 唯一の実行開始点)
+  // DOMContentLoaded イベント
   // ===========================================================================
   
   document.addEventListener('DOMContentLoaded', () => {
     console.log('DOMContentLoaded: App initializing...');
     console.log('[DEBUG] Current page from APP_CONFIG:', window.APP_CONFIG.currentPage);
-    console.log('[DEBUG] Current URL:', window.location.href);
 
-    // Emergency cleanup: Remove any orphaned loading overlays from previous navigation
     document.querySelectorAll('.loading-overlay').forEach(el => {
-      console.warn('[EMERGENCY CLEANUP] Removing orphaned loading overlay from previous page');
+      console.warn('[EMERGENCY CLEANUP] Removing orphaned loading overlay');
       el.remove();
     });
 
-    // ★★★ SPA方式: 初期ページのナビゲーションバーをアクティブ化 ★★★
     const initialPage = window.APP_CONFIG.currentPage;
     console.log('[SPA] Setting initial active page:', initialPage);
     document.querySelectorAll(`nav a[data-page="${initialPage}"]`).forEach(link => {
@@ -1276,4 +1367,3 @@
   
 })();
 </script>
-

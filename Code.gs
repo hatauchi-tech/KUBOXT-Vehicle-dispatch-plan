@@ -2,11 +2,9 @@
  * =============================================================================
  * Code.gs - メインエントリーポイント
  * =============================================================================
- * 
- * このファイルは、Google Apps Script Webアプリケーションのメインエントリーポイントです。
+ * * このファイルは、Google Apps Script Webアプリケーションのメインエントリーポイントです。
  * doGet()関数でHTMLを配信し、クライアントから呼び出されるAPI関数を提供します。
- * 
- * 【設計方針】
+ * * 【設計方針】
  * - すべてのAPI関数はtry-catchでラップし、統一されたレスポンス形式を返す
  * - エラーハンドリングを徹底し、クライアントに適切なエラーメッセージを返す
  * - ログ出力で動作を追跡可能にする
@@ -227,6 +225,49 @@ function apiGetUniqueRequestTypes() {
 // =============================================================================
 
 /**
+ * ★★★ NEW: 依頼IDで単一の依頼データを取得（API）
+ * @param {string} requestId - 取得する依頼ID
+ * @returns {Object} { success: boolean, data: Object, message: string }
+ */
+function apiGetRequestById(requestId) {
+  try {
+    const request = getRequestById(requestId);
+    
+    if (!request) {
+      return {
+        success: false,
+        data: null,
+        message: '依頼データが見つかりません'
+      };
+    }
+    
+    // 日付をISO文字列に変換（JSONシリアライズ対応）
+    const serializedRequest = {
+      ...request,
+      receivedDate: formatDate(request.receivedDate, 'yyyy-MM-dd'),
+      loadDate: formatDate(request.loadDate, 'yyyy-MM-dd'),
+      loadTime: formatTime(request.loadTime, 'HH:mm'),
+      unloadDate: formatDate(request.unloadDate, 'yyyy-MM-dd'),
+      unloadTime: formatTime(request.unloadTime, 'HH:mm')
+    };
+    
+    return {
+      success: true,
+      data: serializedRequest,
+      message: ''
+    };
+  } catch (error) {
+    logMessage('ERROR', 'apiGetRequestById: ' + error.toString());
+    return {
+      success: false,
+      data: null,
+      message: error.message
+    };
+  }
+}
+
+
+/**
  * すべての依頼データを取得（API）
  * @returns {Object} { success: boolean, data: Array, message: string }
  */
@@ -361,6 +402,59 @@ function apiCreateRequest(requestDataJson) {
     };
   }
 }
+
+/**
+ * ★★★ NEW: 依頼を更新（API）
+ * @param {string} requestDataJson - 依頼データのJSON文字列（requestIdを含む）
+ * @returns {Object} { success: boolean, message: string }
+ */
+function apiUpdateRequest(requestDataJson) {
+  try {
+    // JSON文字列をパース
+    const requestData = JSON.parse(requestDataJson);
+    
+    // 日付文字列をDateオブジェクトに変換
+    if (requestData.receivedDate) {
+      requestData.receivedDate = new Date(requestData.receivedDate);
+    }
+    if (requestData.loadDate) {
+      requestData.loadDate = new Date(requestData.loadDate);
+    }
+    if (requestData.unloadDate) {
+      requestData.unloadDate = new Date(requestData.unloadDate);
+    }
+    
+    // 依頼を更新
+    const result = updateRequest(requestData);
+    return result;
+    
+  } catch (error) {
+    logMessage('ERROR', 'apiUpdateRequest: ' + error.toString());
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
+/**
+ * ★★★ NEW: 依頼を削除（API）
+ * @param {string} requestId - 削除する依頼ID
+ * @returns {Object} { success: boolean, message: string }
+ */
+function apiDeleteRequest(requestId) {
+  try {
+    const result = deleteRequest(requestId);
+    return result;
+  } catch (error) {
+    logMessage('ERROR', 'apiDeleteRequest: ' + error.toString());
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
 
 /**
  * 依頼に車両を割り当て（API）

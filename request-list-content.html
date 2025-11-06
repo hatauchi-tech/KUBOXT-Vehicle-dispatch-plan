@@ -4,7 +4,7 @@
     <i class="material-icons large" style="vertical-align: middle;">list</i>
     依頼一覧
   </h1>
-  <p class="page-subtitle">登録済みの依頼データを確認します</p>
+  <p class="page-subtitle">登録済みの依頼データを確認・編集・削除します</p>
 </div>
 
 <!-- フィルターセクション -->
@@ -67,6 +67,8 @@
       <table class="striped responsive-table">
         <thead>
           <tr>
+            <th>操作</th> <!-- ★ NEW: 操作列を追加 -->
+            <th>ステータス</th>
             <th>依頼ID</th>
             <th>積込日</th>
             <th>荷主</th>
@@ -75,13 +77,12 @@
             <th>依頼車種</th>
             <th>ナンバー</th>
             <th>運転手</th>
-            <th>ステータス</th>
           </tr>
         </thead>
         <tbody id="requestTableBody">
           <!-- JavaScriptで動的に生成 -->
           <tr>
-            <td colspan="9" class="text-center">
+            <td colspan="10" class="text-center"> <!-- ★ MOD: colspanを 9 から 10 に変更 -->
               <div class="preloader-wrapper small active">
                 <div class="spinner-layer spinner-blue-only">
                   <div class="circle-clipper left">
