@@ -646,3 +646,39 @@ tbody tr:last-child td {
     page-break-after: auto;
   }
 }
+
+/* =============================================================================
+   9. 当日配車計画 (view-today)
+   ============================================================================= */
+
+.vehicle-plan-card {
+  border-left: 5px solid var(--primary-color);
+  margin-bottom: var(--spacing-md);
+}
+
+.request-plan-item {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+  gap: var(--spacing-md);
+}
+
+.request-plan-item:last-child {
+  border-bottom: none;
+}
+
+.request-plan-time {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: var(--primary-dark);
+  width: 90px;
+}
+
+.request-plan-details {
+  flex-grow: 1;
+}
+
+.request-plan-action {
+  width: 50px;
+}

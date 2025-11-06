@@ -1,7 +1,7 @@
 <script>
 /**
  * =============================================================================
- * app.js - クライアントサイドメインロジック (v3.1 - 編集・削除機能追加)
+ * app.js - クライアントサイドメインロジック (v3.2 - 当日計画タブ機能・デバッグログ追加)
  * =============================================================================
  */
 
@@ -35,10 +35,8 @@
     requests: [],
     selectedRequest: null,
     loading: false,
-    
-    // ★ NEW: フォームの編集モード管理
-    currentFormMode: 'create', // 'create' または 'edit'
-    currentEditingRequestId: null, // 編集中の依頼ID
+    currentFormMode: 'create',
+    currentEditingRequestId: null,
   };
   
   // ===========================================================================
@@ -50,9 +48,11 @@
      * GAS関数を呼び出す共通メソッド
      */
     call(functionName, ...args) {
+      console.log(`[API.call] Calling: ${functionName}`, args); // ★ DEBUG LOG
       return new Promise((resolve, reject) => {
         google.script.run
           .withSuccessHandler(result => {
+            console.log(`[API.call] Success: ${functionName}`, result); // ★ DEBUG LOG
             if (result && result.success === false) {
               reject(new Error(result.message || 'エラーが発生しました'));
             } else {
@@ -67,38 +67,23 @@
       });
     },
     
-    /**
-     * すべての荷主データを取得
-     */
     async getAllShippers() {
       const result = await this.call('apiGetAllShippers');
       return result.data || [];
     },
-    
-    /**
-     * すべての車両データを取得
-     */
     async getAllVehicles() {
       const result = await this.call('apiGetAllVehicles');
       return result.data || [];
     },
-    
-    /**
-     * ユニークな依頼車種リストを取得
-     */
     async getUniqueRequestTypes() {
       const result = await this.call('apiGetUniqueRequestTypes');
       return result.data || [];
     },
-
-    /**
-     * ★ NEW: 依頼IDで単一の依頼データを取得
-     */
     async getRequestById(requestId) {
       const result = await this.call('apiGetRequestById', requestId);
       return result.data || null;
     },
-    
+
     /**
      * すべての依頼データを取得
      */
@@ -106,7 +91,15 @@
       const result = await this.call('apiGetAllRequests');
       return result.data || [];
     },
-    
+
+    /**
+     * ★ NEW: 指定日の配車確定済み依頼を取得
+     */
+    async getAssignedRequestsByDate(dateString) {
+      const result = await this.call('apiGetAssignedRequestsByDate', dateString);
+      return result.data || [];
+    },
+
     /**
      * 未配車の依頼データを取得
      */
@@ -115,63 +108,32 @@
       return result.data || [];
     },
     
-    /**
-     * 日付範囲で依頼データを取得
-     */
     async getRequestsByDateRange(startDate, endDate) {
       const result = await this.call('apiGetRequestsByDateRange', startDate, endDate);
       return result.data || [];
     },
-    
-    /**
-     * 新しい依頼を登録
-     */
     async createRequest(requestData) {
       const requestJson = JSON.stringify(requestData);
       return await this.call('apiCreateRequest', requestJson);
     },
-
-    /**
-     * ★ NEW: 依頼を更新
-     */
     async updateRequest(requestData) {
       const requestJson = JSON.stringify(requestData);
       return await this.call('apiUpdateRequest', requestJson);
     },
-
-    /**
-     * ★ NEW: 依頼を削除
-     */
     async deleteRequest(requestId) {
       return await this.call('apiDeleteRequest', requestId);
     },
-    
-    /**
-     * 依頼に車両を割り当て
-     */
     async assignVehicle(requestId, vehicleNumber) {
       return await this.call('apiAssignVehicle', requestId, vehicleNumber);
     },
-    
-    /**
-     * 依頼の車両割り当てを解除
-     */
     async unassignVehicle(requestId) {
       return await this.call('apiUnassignVehicle', requestId);
     },
-    
-    /**
-     * 指定された依頼に割り当て可能な車両を取得
-     */
     async getAvailableVehicles(requestData) {
       const requestJson = JSON.stringify(requestData);
       const result = await this.call('apiGetAvailableVehicles', requestJson);
       return result.data || [];
     },
-    
-    /**
-     * アプリケーション情報を取得
-     */
     async getAppInfo() {
       const result = await this.call('apiGetAppInfo');
       return result.data || {};
@@ -184,6 +146,7 @@
   
   const UI = {
     showLoading(message = '読み込み中...') {
+      console.log(`[UI.showLoading] ${message}`); // ★ DEBUG LOG
       AppState.loading = true;
       const loadingHtml = `
         <div class="loading-overlay" id="loadingOverlay">
@@ -208,8 +171,8 @@
       this.hideLoading();
       document.body.insertAdjacentHTML('beforeend', loadingHtml);
     },
-    
     hideLoading() {
+      console.log(`[UI.hideLoading]`); // ★ DEBUG LOG
       const overlay = document.getElementById('loadingOverlay');
       if (overlay) {
         overlay.remove();
@@ -219,28 +182,18 @@
       });
       AppState.loading = false;
     },
-    
     showToast(message, type = 'info', duration = 3000) {
       const className = type === 'success' ? 'success' : 
                         type === 'error' ? 'error' : '';
       M.toast({ html: message, classes: className, displayLength: duration });
     },
-    
     showError(message) {
       this.showToast(message, 'error', 5000);
     },
-    
     showSuccess(message) {
       this.showToast(message, 'success', 3000);
     },
-    
-    /**
-     * ★ MOD: 確認ダイアログ
-     * (window.confirmはUIがブロックされるため、Materializeのモーダル利用を推奨しますが、
-     * ここでは簡潔さのため window.confirm を継続利用します)
-     */
     confirm(message) {
-      // 本番環境ではカスタムモーダル（M.Modal）に置き換えることを推奨
       return window.confirm(message);
     }
   };
@@ -256,7 +209,6 @@
       }
       return null;
     },
-    
     isValidDate(value, fieldName) {
       if (!value) {
         return `${fieldName}を入力してください`;
@@ -267,7 +219,6 @@
       }
       return null;
     },
-    
     dateRange(startDate, endDate, startFieldName, endFieldName) {
       const start = new Date(startDate);
       const end = new Date(endDate);
@@ -276,7 +227,6 @@
       }
       return null;
     },
-    
     validateForm(formData, rules) {
       const errors = [];
       for (const [field, rule] of Object.entries(rules)) {
@@ -307,18 +257,23 @@
       const day = String(d.getDate()).padStart(2, '0');
       return `${year}-${month}-${day}`;
     },
-    
-    /**
-     * ★ NEW: 時刻を HH:mm 形式でフォーマット
-     */
     formatTime(time) {
       if (!time) return '';
-      const d = new Date(time);
-      const hours = String(d.getHours()).padStart(2, '0');
-      const minutes = String(d.getMinutes()).padStart(2, '0');
-      return `${hours}:${minutes}`;
+      // 'HH:mm' 形式の文字列が来ることがあるため、Dateコンストラクタを避ける
+      if (typeof time === 'string' && time.match(/^\d{2}:\d{2}$/)) {
+        return time;
+      }
+      // DateオブジェクトまたはISO文字列の場合
+      try {
+        const d = new Date(time);
+        if (isNaN(d.getTime())) return ''; // 無効な日付
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${hours}:${minutes}`;
+      } catch (e) {
+        return '';
+      }
     },
-    
     formatDateJP(date) {
       if (!date) return '';
       const d = new Date(date);
@@ -327,71 +282,67 @@
       const day = d.getDate();
       return `${year}年${month}月${day}日`;
     },
-    
     getToday() {
       return this.formatDate(new Date());
     },
-    
     filterArray(array, filterFn) {
       if (!Array.isArray(array)) return [];
       return array.filter(filterFn);
     },
-    
     sortArray(array, key, ascending = true) {
       if (!Array.isArray(array)) return [];
       return [...array].sort((a, b) => {
         const aVal = a[key];
         const bVal = b[key];
+        // 時間の比較 (例: "09:00")
+        if (typeof aVal === 'string' && aVal.match(/^\d{2}:\d{2}$/)) {
+          return ascending ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+        }
+        // 日付や数値の比較
         if (aVal < bVal) return ascending ? -1 : 1;
         if (aVal > bVal) return ascending ? 1 : -1;
         return 0;
       });
     },
-    
     cloneObject(obj) {
       return JSON.parse(JSON.stringify(obj));
     },
-    
     toggleElement(elementId, show) {
       const element = document.getElementById(elementId);
       if (element) {
         element.style.display = show ? 'block' : 'none';
       }
     },
-    
     populateSelect(selectId, options, valueKey, textKey, placeholder = '選択してください') {
       const select = document.getElementById(selectId);
       if (!select) return;
-      select.innerHTML = `<option value="" disabled selected>${placeholder}</option>`;
+      const currentValue = select.value; // 編集モードでの値保持
+      select.innerHTML = `<option value="" disabled>${placeholder}</option>`; // selectedを削除
       options.forEach(option => {
         const optionElement = document.createElement('option');
         optionElement.value = option[valueKey];
         optionElement.textContent = option[textKey];
         select.appendChild(optionElement);
       });
+      // 適切な値を選択状態にする
+      select.value = currentValue || "";
       M.FormSelect.init(select);
     },
-    
     clearForm(formId) {
       const form = document.getElementById(formId);
       if (form) {
         form.reset();
-        
-        // 隠しフィールドもクリア
         const hiddenId = document.getElementById('requestId');
         if (hiddenId) hiddenId.value = '';
-
         const selects = form.querySelectorAll('select');
         selects.forEach(select => {
+          select.value = ""; // 値をリセット
           M.FormSelect.init(select);
         });
-        
-        // Materializeのテキストフィールドのラベルをリセット
         const labels = form.querySelectorAll('label');
         labels.forEach(label => {
           label.classList.remove('active');
         });
-        // Date/Timeピッカーのラベルはactiveを維持
         const datePickers = form.querySelectorAll('.datepicker, .timepicker');
         datePickers.forEach(picker => {
           const label = picker.nextElementSibling;
@@ -407,34 +358,23 @@
   
   const Navigation = {
     _navigating: false,
-    _currentState: {}, // ★ NEW: ページ遷移時の状態を保持
-
-    /**
-     * ★ MOD: ページ遷移に state を追加
-     */
+    _currentState: {}, 
     navigateToPage(pageName, state = {}, meta = { source: 'unknown' }) {
       console.log('[SPA] navigateToPage called with:', pageName, 'state:', state, 'source:', meta.source);
-
       if (this._navigating) {
         console.log('[WARN] Navigation already in progress, ignoring');
         return;
       }
-
-      // 同一ページでも state が異なる場合は遷移を許可
       if (pageName === AppState.currentPage && JSON.stringify(state) === JSON.stringify(this._currentState)) {
         console.log('[SPA] Already on page with same state:', pageName);
         return;
       }
-
       this._navigating = true;
       UI.showLoading('ページを読み込んでいます...');
-      
-      this._currentState = state; // ★ NEW: stateを保存
-
+      this._currentState = state; 
       google.script.run
         .withSuccessHandler((html) => {
           console.log('[SPA] Page content loaded successfully for:', pageName);
-
           const contentDiv = document.getElementById('page-content');
           if (contentDiv) {
             contentDiv.innerHTML = html;
@@ -445,11 +385,8 @@
             this._navigating = false;
             return;
           }
-
           AppState.currentPage = pageName;
           this.updateActiveNavLinks(pageName);
-
-          // ★ MOD: ページ固有の初期化に state を渡す
           App.initPage(this._currentState).then(() => {
             UI.hideLoading();
             this._navigating = false;
@@ -469,14 +406,11 @@
         })
         .getPageContent(pageName);
     },
-
     updateActiveNavLinks(activePage) {
       console.log('[SPA] Updating active nav links for:', activePage);
-
       document.querySelectorAll('nav li').forEach(li => {
         li.classList.remove('active');
       });
-
       document.querySelectorAll(`nav a[data-page="${activePage}"]`).forEach(link => {
         const li = link.closest('li');
         if (li) {
@@ -484,46 +418,25 @@
         }
       });
     },
-
     setupEventListeners() {
       console.log('[SPA] Setting up navigation event listeners');
-
       const onClickNav = (e) => {
-        console.log('[DEBUG] Click event:', {
-          isTrusted: e.isTrusted,
-          target: e.target.tagName,
-          id: e.target.id
-        });
-
         if (!e.isTrusted) {
-          console.log('[WARN] Ignoring non-user click (isTrusted=false)');
           return;
         }
-
         e.preventDefault();
-
         const link = e.currentTarget;
         const pageName = link.getAttribute('data-page') || 'dispatch-plan';
-
-        console.log('[SPA] User clicked nav link for page:', pageName);
-        this.navigateToPage(pageName, {}, { source: 'user-click' }); // ★ MOD: 空の state を渡す
+        this.navigateToPage(pageName, {}, { source: 'user-click' });
       };
-
       const brandLogo = document.getElementById('brandLogo');
       if (brandLogo) {
-        console.log('[DEBUG] Setting up brandLogo click listener');
         brandLogo.addEventListener('click', onClickNav, { capture: true });
       }
-
       const navLinks = document.querySelectorAll('a[data-page]');
-      console.log('[DEBUG] Found', navLinks.length, 'navigation links');
       navLinks.forEach((link, index) => {
-        const pageName = link.getAttribute('data-page');
-        console.log('[DEBUG] Setting up nav link', index, 'for page:', pageName);
         link.addEventListener('click', onClickNav, { capture: true });
       });
-
-      console.log('[SPA] Navigation event listeners setup completed');
     }
   };
   
@@ -533,36 +446,27 @@
   
   const App = {
     async init() {
-      console.log('App initializing...');
-
+      console.log('[App.init] App initializing...'); // ★ DEBUG LOG
       try {
         UI.showLoading('アプリケーションを初期化中...');
         this.setupEventListeners();
         this.initMaterialize();
         await this.loadMasterData();
-        
-        // ★ MOD: 起動時のページ初期化にも state を渡す
         await this.initPage(Navigation._currentState);
-
         UI.hideLoading();
-        console.log('App initialized successfully');
-
+        console.log('[App.init] App initialized successfully'); // ★ DEBUG LOG
       } catch (error) {
-        console.error('App initialization error:', error);
+        console.error('[App.init] App initialization error:', error); // ★ DEBUG LOG
         UI.hideLoading();
         UI.showError('アプリケーションの初期化に失敗しました: ' + error.message);
       }
     },
-    
     initMaterialize() {
-      console.log('[DEBUG] Initializing Materialize components manually');
-
+      console.log('[App.initMaterialize] Initializing Materialize components manually'); // ★ DEBUG LOG
       const sidenavElems = document.querySelectorAll('.sidenav');
       if (sidenavElems.length > 0) M.Sidenav.init(sidenavElems);
-
       const selectElems = document.querySelectorAll('select');
       if (selectElems.length > 0) M.FormSelect.init(selectElems);
-
       const datepickerElems = document.querySelectorAll('.datepicker');
       if (datepickerElems.length > 0) {
         M.Datepicker.init(datepickerElems, {
@@ -577,7 +481,6 @@
           }
         });
       }
-
       const timepickerElems = document.querySelectorAll('.timepicker');
       if (timepickerElems.length > 0) {
         M.Timepicker.init(timepickerElems, {
@@ -585,19 +488,14 @@
           i18n: { cancel: 'キャンセル', done: '選択' }
         });
       }
-
       const modalElems = document.querySelectorAll('.modal');
       if (modalElems.length > 0) M.Modal.init(modalElems);
-
       const tabsElems = document.querySelectorAll('.tabs');
       if (tabsElems.length > 0) M.Tabs.init(tabsElems);
-      
-      // ★ NEW: Materializeのテキストフィールドを更新（編集フォーム用）
       M.updateTextFields();
     },
-    
     async loadMasterData() {
-      console.log('Loading master data...');
+      console.log('[App.loadMasterData] Loading master data...'); // ★ DEBUG LOG
       try {
         const [shippers, vehicles, requestTypes] = await Promise.all([
           API.getAllShippers(),
@@ -607,23 +505,18 @@
         AppState.shippers = shippers;
         AppState.vehicles = vehicles;
         AppState.requestTypes = requestTypes;
-        console.log('Master data loaded');
+        console.log('[App.loadMasterData] Master data loaded successfully'); // ★ DEBUG LOG
       } catch (error) {
-        console.error('Failed to load master data:', error);
+        console.error('[App.loadMasterData] Failed to load master data:', error); // ★ DEBUG LOG
         throw new Error('マスタデータの読み込みに失敗しました');
       }
     },
-    
-    /**
-     * ★ MOD: ページの初期化に state を渡す
-     */
     async initPage(state = {}) {
       const page = AppState.currentPage;
-      console.log('Initializing page:', page, 'with state:', state);
-      
+      console.log(`[App.initPage] Initializing page: ${page} with state:`, state); // ★ DEBUG LOG
       switch (page) {
         case 'request-form':
-          await RequestForm.init(state); // ★ MOD
+          await RequestForm.init(state);
           break;
         case 'request-list':
           await RequestList.init();
@@ -632,10 +525,9 @@
           await DispatchPlan.init();
           break;
         default:
-          console.warn('Unknown page or no page-specific init required:', page);
+          console.warn(`[App.initPage] Unknown page or no page-specific init required: ${page}`); // ★ DEBUG LOG
       }
     },
-    
     setupEventListeners() {
       Navigation.setupEventListeners();
     }
@@ -647,13 +539,8 @@
   
   // 依頼入力画面モジュール
   const RequestForm = {
-    /**
-     * ★ MOD: initがstateを受け取るように変更
-     */
     async init(state = {}) {
-      console.log('RequestForm init with state:', state);
-      
-      // フォームの状態を設定
+      console.log('[RequestForm.init] with state:', state); // ★ DEBUG LOG
       if (state.mode === 'edit' && state.requestId) {
         AppState.currentFormMode = 'edit';
         AppState.currentEditingRequestId = state.requestId;
@@ -661,21 +548,16 @@
         AppState.currentFormMode = 'create';
         AppState.currentEditingRequestId = null;
       }
-      
       this.setupEventListeners();
-      this.setupFormUI(); // ★ UIを先に設定
-      await this.populateFormData(); // ★ データを後に読み込む
+      this.setupFormUI();
+      await this.populateFormData();
     },
-
-    /**
-     * ★ NEW: フォームのUI（タイトル、ボタン）をモードに応じて設定
-     */
     setupFormUI() {
+      console.log(`[RequestForm.setupFormUI] Mode: ${AppState.currentFormMode}`); // ★ DEBUG LOG
       const title = document.getElementById('pageTitle');
       const subtitle = document.getElementById('pageSubtitle');
       const submitBtnText = document.getElementById('submitBtnText');
       const cancelBtnText = document.getElementById('cancelBtnText');
-
       if (AppState.currentFormMode === 'edit') {
         if (title) title.innerHTML = '<i class="material-icons large" style="vertical-align: middle;">edit</i> 依頼編集';
         if (subtitle) subtitle.textContent = `依頼ID: ${AppState.currentEditingRequestId} の内容を編集します`;
@@ -688,45 +570,37 @@
         if (cancelBtnText) cancelBtnText.textContent = 'クリア';
       }
     },
-    
-    /**
-     * ★ MOD: フォームのデータ入力（編集モード対応）
-     */
     async populateFormData() {
-      // 共通のマスタデータを設定
-      Utils.populateSelect('shipper', AppState.shippers, 'shipperId', 'shipperName');
+      console.log('[RequestForm.populateFormData] Populating selects...'); // ★ DEBUG LOG
+      Utils.populateSelect('shipper', AppState.shippers, 'shipperId', 'shipperName', '荷主を選択');
       Utils.populateSelect('requestType', AppState.requestTypes.map(type => ({
         value: type,
         label: type
-      })), 'value', 'label');
+      })), 'value', 'label', '依頼車種を選択');
       
       if (AppState.currentFormMode === 'edit') {
-        // 編集モード：既存データを読み込む
+        console.log(`[RequestForm.populateFormData] Edit mode: Loading data for ${AppState.currentEditingRequestId}`); // ★ DEBUG LOG
         try {
           UI.showLoading('依頼データを読み込み中...');
           const data = await API.getRequestById(AppState.currentEditingRequestId);
           if (data) {
+            console.log('[RequestForm.populateFormData] Data loaded:', data); // ★ DEBUG LOG
             document.getElementById('requestId').value = data.requestId;
             document.getElementById('receivedDate').value = Utils.formatDate(data.receivedDate);
-            document.getElementById('shipper').value = data.shipper; // ★ 注意: shipperIdではなくshipperName
+            document.getElementById('shipper').value = data.shipperId;
             document.getElementById('productName').value = data.productName;
             document.getElementById('requestType').value = data.requestType;
             document.getElementById('loadDate').value = Utils.formatDate(data.loadDate);
-            document.getElementById('loadTime').value = data.loadTime; // HH:mm
+            document.getElementById('loadTime').value = Utils.formatTime(data.loadTime);
             document.getElementById('loadPlace1').value = data.loadPlace1;
             document.getElementById('loadPlace2').value = data.loadPlace2;
             document.getElementById('unloadDate').value = Utils.formatDate(data.unloadDate);
-            document.getElementById('unloadTime').value = data.unloadTime; // HH:mm
+            document.getElementById('unloadTime').value = Utils.formatTime(data.unloadTime);
             document.getElementById('unloadPlace1').value = data.unloadPlace1;
             document.getElementById('unloadPlace2').value = data.unloadPlace2;
             
-            // Materializeのselectを更新
-            const selects = document.querySelectorAll('select');
-            M.FormSelect.init(selects);
-            
-            // Materializeのラベルをアクティブ化
+            M.FormSelect.init(document.querySelectorAll('select'));
             M.updateTextFields();
-
           } else {
             UI.showError('依頼データの読み込みに失敗しました');
           }
@@ -737,71 +611,58 @@
           UI.showError('依頼データの読み込みに失敗しました: ' + error.message);
         }
       } else {
-        // 新規登録モード：受付日を今日に設定
+        console.log('[RequestForm.populateFormData] Create mode: Setting default date'); // ★ DEBUG LOG
         const receivedDateInput = document.getElementById('receivedDate');
         if (receivedDateInput) {
           receivedDateInput.value = Utils.getToday();
         }
-        // Materializeのラベルをアクティブ化
         M.updateTextFields();
       }
     },
-    
     setupEventListeners() {
+      console.log('[RequestForm.setupEventListeners]'); // ★ DEBUG LOG
       const form = document.getElementById('requestForm');
       if (form) {
-        // 既存のリスナーを削除（念のため）
         form.removeEventListener('submit', this.handleSubmit);
         form.addEventListener('submit', (e) => this.handleSubmit(e));
       }
-      
       const cancelBtn = document.getElementById('cancelBtn');
       if (cancelBtn) {
-        // 既存のリスナーを削除（念のため）
         cancelBtn.removeEventListener('click', this.handleCancel);
         cancelBtn.addEventListener('click', () => this.handleCancel());
       }
     },
-    
-    /**
-     * ★ MOD: 送信処理（新規・編集を分岐）
-     */
     async handleSubmit(e) {
       e.preventDefault();
-      
+      console.log('[RequestForm.handleSubmit] Form submitted'); // ★ DEBUG LOG
       const formData = this.getFormData();
       const errors = this.validateFormData(formData);
-      
       if (errors.length > 0) {
         UI.showError(errors.join('\n'));
         return;
       }
-      
       try {
         if (AppState.currentFormMode === 'edit') {
-          // 更新処理
+          console.log('[RequestForm.handleSubmit] Updating request...'); // ★ DEBUG LOG
           UI.showLoading('依頼を更新中...');
           const result = await API.updateRequest(formData);
           UI.hideLoading();
-          
           if (result.success) {
             UI.showSuccess('依頼を更新しました (ID: ' + formData.requestId + ')');
             Navigation.navigateToPage('request-list', {}, { source: 'form-submit' });
           } else {
             UI.showError('依頼の更新に失敗しました: ' + result.message);
           }
-          
         } else {
-          // 新規登録処理
+          console.log('[RequestForm.handleSubmit] Creating new request...'); // ★ DEBUG LOG
           UI.showLoading('依頼を登録中...');
           const result = await API.createRequest(formData);
           UI.hideLoading();
-          
           if (result.success) {
             UI.showSuccess('依頼を登録しました (ID: ' + result.requestId + ')');
             Utils.clearForm('requestForm');
-            this.setupFormUI(); // UIをリセット
-            this.populateFormData(); // 受付日を再設定
+            this.setupFormUI();
+            this.populateFormData();
           } else {
             UI.showError('依頼の登録に失敗しました: ' + result.message);
           }
@@ -812,13 +673,9 @@
         UI.showError('処理に失敗しました: ' + error.message);
       }
     },
-    
-    /**
-     * ★ MOD: getFormDataがrequestIdを含むように
-     */
     getFormData() {
-      return {
-        requestId: document.getElementById('requestId').value, // ★ NEW
+      const data = {
+        requestId: document.getElementById('requestId').value,
         receivedDate: document.getElementById('receivedDate').value,
         shipper: document.getElementById('shipper').value,
         loadDate: document.getElementById('loadDate').value,
@@ -832,8 +689,9 @@
         unloadPlace2: document.getElementById('unloadPlace2').value,
         requestType: document.getElementById('requestType').value
       };
+      console.log('[RequestForm.getFormData]', data); // ★ DEBUG LOG
+      return data;
     },
-    
     validateFormData(formData) {
       const errors = [];
       if (!formData.shipper) errors.push('荷主を選択してください');
@@ -843,7 +701,6 @@
       if (!formData.unloadDate) errors.push('荷卸日を入力してください');
       if (!formData.unloadPlace1) errors.push('荷卸地1を入力してください');
       if (!formData.requestType) errors.push('依頼車種を選択してください');
-      
       if (formData.loadDate && formData.unloadDate) {
         const error = Validator.dateRange(
           formData.loadDate,
@@ -855,21 +712,15 @@
       }
       return errors;
     },
-    
-    /**
-     * ★ MOD: キャンセル・クリア処理
-     */
     handleCancel() {
       if (AppState.currentFormMode === 'edit') {
-        // 編集モード時は一覧に戻る
         if (UI.confirm('編集をキャンセルして一覧に戻りますか?')) {
           Navigation.navigateToPage('request-list', {}, { source: 'form-cancel' });
         }
       } else {
-        // 新規登録モード時はフォームをクリア
         if (UI.confirm('入力内容をクリアしますか?')) {
           Utils.clearForm('requestForm');
-          this.populateFormData(); // 受付日を再設定
+          this.populateFormData();
         }
       }
     }
@@ -878,17 +729,16 @@
   // 依頼一覧モジュール
   const RequestList = {
     async init() {
-      console.log('RequestList init');
+      console.log('[RequestList.init]'); // ★ DEBUG LOG
       this.setupEventListeners();
       this.populateFilters();
       await this.loadRequests();
     },
-
     populateFilters() {
       Utils.populateSelect('filterShipper', AppState.shippers, 'shipperId', 'shipperName', 'すべての荷主');
     },
-    
     async loadRequests() {
+      console.log('[RequestList.loadRequests] Loading all requests...'); // ★ DEBUG LOG
       try {
         UI.showLoading('依頼データを読み込み中...');
         const requests = await API.getAllRequests();
@@ -902,25 +752,17 @@
         UI.showError('依頼データの読み込みに失敗しました');
       }
     },
-    
-    /**
-     * ★ MOD: テーブル描画（編集・削除ボタン追加）
-     */
     renderTable(requests) {
+      console.log(`[RequestList.renderTable] Rendering ${requests.length} requests`); // ★ DEBUG LOG
       const tbody = document.getElementById('requestTableBody');
       if (!tbody) return;
-      
       if (requests.length === 0) {
         tbody.innerHTML = '<tr><td colspan="10" class="text-center">データがありません</td></tr>';
         return;
       }
-      
-      // ★ MOD: 依頼日（loadDate）でソート（新しいものが上）
       const sortedRequests = Utils.sortArray(requests, 'loadDate', false);
-      
       tbody.innerHTML = sortedRequests.map(req => `
         <tr>
-          <!-- ★ NEW: 操作ボタン -->
           <td class="table-actions" style="min-width: 120px;">
             <button class="btn-small waves-effect waves-light blue edit-btn" data-request-id="${req.requestId}" title="編集">
               <i class="material-icons">edit</i>
@@ -929,8 +771,6 @@
               <i class="material-icons">delete</i>
             </button>
           </td>
-          
-          <!-- ステータス -->
           <td>
             ${req.vehicleNumber 
               ? '<span class="chip chip-assigned">配車済</span>' 
@@ -947,28 +787,20 @@
         </tr>
       `).join('');
     },
-    
-    /**
-     * ★ MOD: イベントリスナー（編集・削除ボタン対応）
-     */
     setupEventListeners() {
       const applyBtn = document.getElementById('applyFilterBtn');
       if (applyBtn) {
         applyBtn.addEventListener('click', () => this.applyFilters());
       }
-      
       const resetBtn = document.getElementById('resetFilterBtn');
       if (resetBtn) {
         resetBtn.addEventListener('click', () => this.resetFilters());
       }
-      
-      // ★ NEW: テーブルのイベント委譲
       const tableBody = document.getElementById('requestTableBody');
       if (tableBody) {
         tableBody.addEventListener('click', (e) => {
           const editBtn = e.target.closest('.edit-btn');
           const deleteBtn = e.target.closest('.delete-btn');
-          
           if (editBtn) {
             const requestId = editBtn.dataset.requestId;
             this.handleEditClick(requestId);
@@ -979,13 +811,11 @@
         });
       }
     },
-
     applyFilters() {
       if (!AppState.requests) return;
-      
       const startDate = document.getElementById('filterStartDate').value;
       const endDate = document.getElementById('filterEndDate').value;
-      const shipper = document.getElementById('filterShipper').value;
+      const shipperId = document.getElementById('filterShipper').value;
       const status = document.getElementById('filterStatus').value;
       
       let filtered = AppState.requests;
@@ -996,8 +826,8 @@
       if (endDate) {
         filtered = filtered.filter(req => req.loadDate <= endDate);
       }
-      if (shipper) {
-        filtered = filtered.filter(req => req.shipper === shipper); // ★ MOD: shipperId ではなく shipper (name)
+      if (shipperId) {
+        filtered = filtered.filter(req => req.shipperId === shipperId);
       }
       if (status === 'assigned') {
         filtered = filtered.filter(req => req.vehicleNumber);
@@ -1008,55 +838,40 @@
       this.renderTable(filtered);
       this.updateRequestCount(filtered.length);
     },
-    
     resetFilters() {
       document.getElementById('filterStartDate').value = '';
       document.getElementById('filterEndDate').value = '';
       document.getElementById('filterShipper').value = '';
       document.getElementById('filterStatus').value = '';
-      
-      const selects = document.querySelectorAll('select');
-      M.FormSelect.init(selects);
-      
+      M.FormSelect.init(document.querySelectorAll('select'));
       this.renderTable(AppState.requests);
       this.updateRequestCount(AppState.requests.length);
     },
-
     updateRequestCount(count) {
       const countElem = document.getElementById('requestCount');
       if (countElem) {
         countElem.textContent = `全 ${count} 件`;
       }
     },
-    
-    /**
-     * ★ NEW: 編集ボタンクリック処理
-     */
     handleEditClick(requestId) {
-      console.log('Edit clicked:', requestId);
+      console.log('[RequestList.handleEditClick] ID:', requestId); // ★ DEBUG LOG
       Navigation.navigateToPage('request-form', { 
         mode: 'edit', 
         requestId: requestId 
       }, { source: 'list-edit-btn' });
     },
-    
-    /**
-     * ★ NEW: 削除ボタンクリック処理
-     */
     async handleDeleteClick(requestId) {
-      console.log('Delete clicked:', requestId);
+      console.log('[RequestList.handleDeleteClick] ID:', requestId); // ★ DEBUG LOG
       if (!UI.confirm(`依頼ID: ${requestId} を削除しますか？\nこの操作は元に戻せません。`)) {
         return;
       }
-      
       try {
         UI.showLoading('依頼を削除中...');
         const result = await API.deleteRequest(requestId);
         UI.hideLoading();
-        
         if (result.success) {
           UI.showSuccess('依頼を削除しました');
-          await this.loadRequests(); // 一覧を再読み込み
+          await this.loadRequests();
         } else {
           UI.showError('依頼の削除に失敗しました: ' + result.message);
         }
@@ -1071,10 +886,122 @@
   // 配車計画モジュール
   const DispatchPlan = {
     async init() {
-      console.log('DispatchPlan init');
+      console.log('[DispatchPlan.init] Initializing...'); // ★ DEBUG LOG
       this.setupEventListeners();
       this.populateFilters();
-      await this.loadRequests();
+      
+      UI.showLoading('依頼データを読み込み中...');
+      try {
+        console.log('[DispatchPlan.init] Awaiting this.loadUnassignedRequests...'); // ★ DEBUG LOG
+        await this.loadUnassignedRequests(); // ★ MOD: 分離
+        
+        console.log('[DispatchPlan.init] Awaiting this.loadTodayAssignedRequests...'); // ★ DEBUG LOG
+        await this.loadTodayAssignedRequests();
+        
+      } catch (error) {
+        console.error('[DispatchPlan.init] Load requests error:', error); // ★ DEBUG LOG
+        UI.showError('依頼データの読み込みに失敗しました');
+      } finally {
+        UI.hideLoading();
+      }
+    },
+
+    /**
+     * 当日の配車確定データを読み込む
+     */
+    async loadTodayAssignedRequests() {
+      const todayString = Utils.getToday();
+      console.log(`[DispatchPlan.loadToday] Loading for date: ${todayString}`); // ★ DEBUG LOG
+      
+      const todayDateElem = document.getElementById('todayDateStr');
+      if (todayDateElem) {
+        todayDateElem.textContent = Utils.formatDateJP(todayString);
+      }
+
+      try {
+        const requests = await API.getAssignedRequestsByDate(todayString);
+        console.log(`[DispatchPlan.loadToday] Received ${requests.length} assigned requests`); // ★ DEBUG LOG
+        this.renderTodayAssignedRequests(requests);
+      } catch (error) {
+        console.error('[DispatchPlan.loadToday] Load today assigned requests error:', error); // ★ DEBUG LOG
+        UI.showError('当日の配車計画の読み込みに失敗しました');
+        const container = document.getElementById('todayAssignedRequests');
+        if (container) {
+          container.innerHTML = '<p class="text-center text-error">データの読み込みに失敗しました</p>';
+        }
+      }
+    },
+    
+    /**
+     * 当日の配車確定データを描画する
+     */
+    renderTodayAssignedRequests(requests) {
+      console.log(`[DispatchPlan.renderToday] Rendering ${requests.length} requests.`); // ★ DEBUG LOG
+      const container = document.getElementById('todayAssignedRequests');
+      if (!container) {
+         console.error('[DispatchPlan.renderToday] Container #todayAssignedRequests not found!'); // ★ DEBUG LOG
+         return;
+      }
+      
+      if (requests.length === 0) {
+        container.innerHTML = '<p class="text-center text-secondary">本日の配車確定済み依頼はありません</p>';
+        return;
+      }
+      
+      // 車両ごとにグループ化
+      const groupedByVehicle = requests.reduce((acc, req) => {
+        const key = req.vehicleNumber || 'unknown';
+        if (!acc[key]) {
+          acc[key] = {
+            driverName: req.driverName,
+            vehicleType: req.vehicleType,
+            requests: []
+          };
+        }
+        acc[key].requests.push(req);
+        return acc;
+      }, {});
+      
+      // 時間でソート
+      for (const vehicle in groupedByVehicle) {
+        groupedByVehicle[vehicle].requests = Utils.sortArray(groupedByVehicle[vehicle].requests, 'loadTime', true);
+      }
+      
+      // HTMLを構築
+      container.innerHTML = Object.entries(groupedByVehicle).map(([vehicleNumber, data]) => {
+        return `
+          <div class="card vehicle-plan-card">
+            <div class="card-content">
+              <div class="card-title" style="font-size: 1.25rem; color: #1976D2; margin-bottom: 10px;">
+                <i class="material-icons left">local_shipping</i>
+                ${vehicleNumber} (${data.driverName || '未設定'})
+                <span class="chip chip-info right">${data.vehicleType}</span>
+              </div>
+              
+              ${data.requests.map(req => `
+                <div class="request-plan-item">
+                  <div class="request-plan-time">${Utils.formatTime(req.loadTime) || '時間未定'}</div>
+                  <div class="request-plan-details">
+                    <strong>${req.shipper}</strong> - ${req.productName}
+                    <div class="request-info">
+                      積: ${req.loadPlace1}
+                      <span class="right">卸: ${req.unloadPlace1}</span>
+                    </div>
+                  </div>
+                  <div class="request-plan-action">
+                    <button class="btn-small waves-effect waves-light amber darken-3 unassign-btn" 
+                            data-request-id="${req.requestId}" 
+                            title="配車を解除する">
+                      <i class="material-icons">undo</i>
+                    </button>
+                  </div>
+                </div>
+              `).join('')}
+              
+            </div>
+          </div>
+        `;
+      }).join('');
     },
 
     populateFilters() {
@@ -1085,37 +1012,35 @@
       })), 'value', 'label', 'すべての車種');
     },
     
-    async loadRequests() {
+    /**
+     * 未配車タブのデータ読み込み
+     */
+    async loadUnassignedRequests() {
+      console.log('[DispatchPlan.loadUnassigned] Loading all requests for unassigned tab...'); // ★ DEBUG LOG
       try {
-        UI.showLoading('依頼データを読み込み中...');
         const requests = await API.getAllRequests();
         AppState.requests = requests;
-        this.applyPlanFilters(); // デフォルトフィルター（未配車のみ）を適用
-        UI.hideLoading();
+        this.applyPlanFilters(); // フィルター適用して描画
+        console.log('[DispatchPlan.loadUnassigned] Unassigned requests loaded and rendered.'); // ★ DEBUG LOG
       } catch (error) {
-        console.error('Load requests error:', error);
-        UI.hideLoading();
-        UI.showError('依頼データの読み込みに失敗しました');
+        console.error('[DispatchPlan.loadUnassigned] Load unassigned requests error:', error); // ★ DEBUG LOG
+        UI.showError('未配車依頼の読み込みに失敗しました');
       }
     },
     
     renderRequests(requests) {
+      console.log(`[DispatchPlan.renderRequests] Rendering ${requests.length} unassigned requests`); // ★ DEBUG LOG
       const container = document.getElementById('unassignedRequests');
       if (!container) return;
-
       const countElem = document.getElementById('unassignedCount');
       if (countElem) {
         countElem.textContent = `(${requests.length} 件)`;
       }
-      
       if (requests.length === 0) {
         container.innerHTML = '<p class="text-center text-secondary">対象の依頼はありません</p>';
         return;
       }
-      
-      // ★ MOD: 依頼日（loadDate）でソート（古いものが上）
       const sortedRequests = Utils.sortArray(requests, 'loadDate', true);
-      
       container.innerHTML = sortedRequests.map(req => `
         <div class="request-card" data-request-id="${req.requestId}">
           <div class="request-card-header">
@@ -1126,31 +1051,47 @@
             <strong>${req.shipper}</strong> - ${req.productName}
           </div>
           <div class="request-info">
-            積込: ${Utils.formatDateJP(req.loadDate)} ${req.loadTime || ''} - ${req.loadPlace1}
+            積込: ${Utils.formatDateJP(req.loadDate)} ${Utils.formatTime(req.loadTime) || ''} - ${req.loadPlace1}
           </div>
           <div class="request-info">
-            荷卸: ${Utils.formatDateJP(req.unloadDate)} ${req.unloadTime || ''} - ${req.unloadPlace1}
+            荷卸: ${Utils.formatDateJP(req.unloadDate)} ${Utils.formatTime(req.unloadTime) || ''} - ${req.unloadPlace1}
           </div>
         </div>
       `).join('');
     },
     
     setupEventListeners() {
+      console.log('[DispatchPlan.setupEventListeners]'); // ★ DEBUG LOG
+      // 当日タブ
+      const reloadTodayBtn = document.getElementById('reloadTodayPlanBtn');
+      if (reloadTodayBtn) {
+        reloadTodayBtn.addEventListener('click', () => this.loadTodayAssignedRequests());
+      }
+      
+      const todayContainer = document.getElementById('todayAssignedRequests');
+      if (todayContainer) {
+        todayContainer.addEventListener('click', (e) => {
+          const unassignBtn = e.target.closest('.unassign-btn');
+          if (unassignBtn) {
+            const requestId = unassignBtn.dataset.requestId;
+            this.handleUnassignClick(requestId);
+          }
+        });
+      }
+
+      // 未配車タブ
       const applyBtn = document.getElementById('planApplyFilterBtn');
       if (applyBtn) {
         applyBtn.addEventListener('click', () => this.applyPlanFilters());
       }
-      
       const resetBtn = document.getElementById('planResetFilterBtn');
       if (resetBtn) {
         resetBtn.addEventListener('click', () => this.resetPlanFilters());
       }
-      
       const cancelBtn = document.getElementById('cancelVehicleSelectBtn');
       if (cancelBtn) {
         cancelBtn.addEventListener('click', () => this.cancelVehicleSelection());
       }
-      
       const unassignedContainer = document.getElementById('unassignedRequests');
       if (unassignedContainer) {
         unassignedContainer.addEventListener('click', (e) => {
@@ -1163,11 +1104,36 @@
       }
     },
     
+    async handleUnassignClick(requestId) {
+      console.log(`[DispatchPlan.handleUnassignClick] ID: ${requestId}`); // ★ DEBUG LOG
+      if (!UI.confirm(`依頼ID: ${requestId} の配車を解除しますか？`)) {
+        return;
+      }
+      
+      try {
+        UI.showLoading('配車を解除しています...');
+        const result = await API.unassignVehicle(requestId);
+        UI.hideLoading();
+        
+        if (result.success) {
+          UI.showSuccess('配車を解除しました');
+          // 両方のタブをリフレッシュ
+          await this.loadTodayAssignedRequests();
+          await this.loadUnassignedRequests();
+        } else {
+          UI.showError('配車解除に失敗しました: ' + result.message);
+        }
+      } catch (error) {
+        console.error('Unassign error:', error);
+        UI.hideLoading();
+        UI.showError('配車解除に失敗しました: ' + error.message);
+      }
+    },
+    
     applyPlanFilters() {
       if (!AppState.requests) return;
-      
       const date = document.getElementById('planFilterDate').value;
-      const shipper = document.getElementById('planFilterShipper').value;
+      const shipperId = document.getElementById('planFilterShipper').value;
       const type = document.getElementById('planFilterType').value;
       const unassignedOnly = document.getElementById('planFilterUnassigned').checked;
       
@@ -1179,8 +1145,8 @@
       if (date) {
         filtered = filtered.filter(req => req.loadDate === date);
       }
-      if (shipper) {
-        filtered = filtered.filter(req => req.shipper === shipper); // ★ MOD: shipperId ではなく shipper (name)
+      if (shipperId) {
+        filtered = filtered.filter(req => req.shipperId === shipperId);
       }
       if (type) {
         filtered = filtered.filter(req => req.requestType === type);
@@ -1194,23 +1160,20 @@
       document.getElementById('planFilterShipper').value = '';
       document.getElementById('planFilterType').value = '';
       document.getElementById('planFilterUnassigned').checked = true;
-      
-      const selects = document.querySelectorAll('select');
-      M.FormSelect.init(selects);
+      M.FormSelect.init(document.querySelectorAll('select'));
       
       const unassigned = AppState.requests.filter(req => !req.vehicleNumber);
       this.renderRequests(unassigned);
     },
     
     async selectRequestForDispatch(requestId) {
+      console.log(`[DispatchPlan.selectRequest] ID: ${requestId}`); // ★ DEBUG LOG
       try {
         const request = AppState.requests.find(r => r.requestId === requestId);
         if (!request) return;
-        
         AppState.selectedRequest = request;
         
-        const cards = document.querySelectorAll('.request-card');
-        cards.forEach(card => {
+        document.querySelectorAll('.request-card').forEach(card => {
           card.classList.toggle('selected', card.dataset.requestId === requestId);
         });
         
@@ -1221,7 +1184,6 @@
         UI.hideLoading();
         
         this.renderAvailableVehicles(vehicles, request);
-        
       } catch (error) {
         console.error('Select request error:', error);
         UI.hideLoading();
@@ -1232,7 +1194,6 @@
     showVehicleSelector(request) {
       Utils.toggleElement('vehicleSelectorCard', true);
       Utils.toggleElement('helpCard', false);
-      
       const infoDiv = document.getElementById('selectedRequestInfo');
       if (infoDiv) {
         infoDiv.innerHTML = `
@@ -1242,8 +1203,8 @@
             </h6>
             <p style="margin: 5px 0;"><strong>荷主:</strong> ${request.shipper}</p>
             <p style="margin: 5px 0;"><strong>品名:</strong> ${request.productName}</p>
-            <p style="margin: 5px 0;"><strong>積込:</strong> ${Utils.formatDateJP(request.loadDate)} ${request.loadTime || ''}</p>
-            <p style="margin: 5px 0;"><strong>荷卸:</strong> ${Utils.formatDateJP(request.unloadDate)} ${request.unloadTime || ''}</p>
+            <p style="margin: 5px 0;"><strong>積込:</strong> ${Utils.formatDateJP(request.loadDate)} ${Utils.formatTime(request.loadTime) || ''}</p>
+            <p style="margin: 5px 0;"><strong>荷卸:</strong> ${Utils.formatDateJP(request.unloadDate)} ${Utils.formatTime(request.unloadTime) || ''}</p>
             <p style="margin: 5px 0;"><strong>依頼車種:</strong> <span class="chip chip-info">${request.requestType}</span></p>
           </div>
         `;
@@ -1251,14 +1212,13 @@
     },
     
     renderAvailableVehicles(vehicles, request) {
+      console.log(`[DispatchPlan.renderAvailableVehicles] Rendering ${vehicles.length} vehicles`); // ★ DEBUG LOG
       const container = document.getElementById('availableVehicles');
       if (!container) return;
-      
       if (vehicles.length === 0) {
         container.innerHTML = '<p class="text-center text-secondary">この依頼に割り当て可能な車両がありません</p>';
         return;
       }
-      
       container.innerHTML = vehicles.map(vehicle => `
         <div class="vehicle-item" data-vehicle-number="${vehicle.number}">
           <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -1281,8 +1241,7 @@
         </div>
       `).join('');
       
-      const assignBtns = container.querySelectorAll('.assign-vehicle-btn');
-      assignBtns.forEach(btn => {
+      container.querySelectorAll('.assign-vehicle-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           const vehicleNumber = btn.dataset.vehicleNumber;
@@ -1293,19 +1252,20 @@
     },
     
     async assignVehicleToRequest(requestId, vehicleNumber) {
+      console.log(`[DispatchPlan.assignVehicle] Assigning ${vehicleNumber} to ${requestId}`); // ★ DEBUG LOG
       if (!UI.confirm('この車両を割り当てますか?')) {
         return;
       }
-      
       try {
         UI.showLoading('車両を割り当て中...');
         const result = await API.assignVehicle(requestId, vehicleNumber);
         UI.hideLoading();
-        
         if (result.success) {
           UI.showSuccess('車両を割り当てました');
-          await this.loadRequests();
           this.cancelVehicleSelection();
+          // 両方のタブをリフレッシュ
+          await this.loadTodayAssignedRequests();
+          await this.loadUnassignedRequests();
         } else {
           UI.showError('車両の割り当てに失敗しました: ' + result.message);
         }
@@ -1317,12 +1277,10 @@
     },
     
     cancelVehicleSelection() {
+      console.log('[DispatchPlan.cancelVehicleSelection]'); // ★ DEBUG LOG
       Utils.toggleElement('vehicleSelectorCard', false);
       Utils.toggleElement('helpCard', true);
-      
-      const cards = document.querySelectorAll('.request-card');
-      cards.forEach(card => card.classList.remove('selected'));
-      
+      document.querySelectorAll('.request-card').forEach(card => card.classList.remove('selected'));
       AppState.selectedRequest = null;
     }
   };

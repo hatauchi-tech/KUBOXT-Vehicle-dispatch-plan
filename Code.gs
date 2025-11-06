@@ -301,6 +301,41 @@ function apiGetAllRequests() {
 }
 
 /**
+ * ★★★ NEW: 指定日の配車確定済み依頼を取得（API）
+ * @param {string} dateString - 対象日付 (YYYY-MM-DD)
+ * @returns {Object} { success: boolean, data: Array, message: string }
+ */
+function apiGetAssignedRequestsByDate(dateString) {
+  try {
+    const targetDate = new Date(dateString);
+    const requests = getAssignedRequestsByDate(targetDate);
+    
+    // 日付をISO文字列に変換
+    const serializedRequests = requests.map(req => ({
+      ...req,
+      receivedDate: formatDate(req.receivedDate, 'yyyy-MM-dd'),
+      loadDate: formatDate(req.loadDate, 'yyyy-MM-dd'),
+      loadTime: formatTime(req.loadTime, 'HH:mm'),
+      unloadDate: formatDate(req.unloadDate, 'yyyy-MM-dd'),
+      unloadTime: formatTime(req.unloadTime, 'HH:mm')
+    }));
+    
+    return {
+      success: true,
+      data: serializedRequests,
+      message: ''
+    };
+  } catch (error) {
+    logMessage('ERROR', 'apiGetAssignedRequestsByDate: ' + error.toString());
+    return {
+      success: false,
+      data: [],
+      message: error.message
+    };
+  }
+}
+
+/**
  * 未配車の依頼データを取得（API）
  * @returns {Object} { success: boolean, data: Array, message: string }
  */
