@@ -1,0 +1,123 @@
+<!-- 依頼確認画面 (SCR-02) - コンテンツ部分のみ -->
+<div class="page-header">
+  <h1 class="page-title">
+    <i class="material-icons large" style="vertical-align: middle;">list</i>
+    依頼一覧
+  </h1>
+  <p class="page-subtitle">登録済みの依頼データを確認します</p>
+</div>
+
+<!-- フィルターセクション -->
+<div class="filter-section">
+  <h5 class="filter-title">
+    <i class="material-icons" style="vertical-align: middle;">filter_list</i>
+    絞り込み条件
+  </h5>
+
+  <div class="filter-row">
+    <div class="input-field">
+      <input type="date" id="filterStartDate" class="datepicker">
+      <label for="filterStartDate" class="active">積込日（開始）</label>
+    </div>
+
+    <div class="input-field">
+      <input type="date" id="filterEndDate" class="datepicker">
+      <label for="filterEndDate" class="active">積込日（終了）</label>
+    </div>
+
+    <div class="input-field">
+      <select id="filterShipper">
+        <option value="">すべて</option>
+      </select>
+      <label>荷主</label>
+    </div>
+
+    <div class="input-field">
+      <select id="filterStatus">
+        <option value="">すべて</option>
+        <option value="assigned">配車済</option>
+        <option value="unassigned">未配車</option>
+      </select>
+      <label>ステータス</label>
+    </div>
+
+    <button id="applyFilterBtn" class="btn waves-effect waves-light blue darken-1">
+      <i class="material-icons left">search</i>
+      絞り込み
+    </button>
+
+    <button id="resetFilterBtn" class="btn waves-effect waves-light grey">
+      <i class="material-icons left">refresh</i>
+      リセット
+    </button>
+  </div>
+</div>
+
+<!-- テーブル -->
+<div class="card">
+  <div class="card-content">
+    <div class="card-title">
+      <span>依頼データ一覧</span>
+      <span class="right" id="requestCount" style="font-size: 1rem; color: #757575;">
+        <!-- JavaScriptで件数を表示 -->
+      </span>
+    </div>
+
+    <div class="table-container">
+      <table class="striped responsive-table">
+        <thead>
+          <tr>
+            <th>依頼ID</th>
+            <th>積込日</th>
+            <th>荷主</th>
+            <th>積込地</th>
+            <th>品名</th>
+            <th>依頼車種</th>
+            <th>ナンバー</th>
+            <th>運転手</th>
+            <th>ステータス</th>
+          </tr>
+        </thead>
+        <tbody id="requestTableBody">
+          <!-- JavaScriptで動的に生成 -->
+          <tr>
+            <td colspan="9" class="text-center">
+              <div class="preloader-wrapper small active">
+                <div class="spinner-layer spinner-blue-only">
+                  <div class="circle-clipper left">
+                    <div class="circle"></div>
+                  </div>
+                  <div class="gap-patch">
+                    <div class="circle"></div>
+                  </div>
+                  <div class="circle-clipper right">
+                    <div class="circle"></div>
+                  </div>
+                </div>
+              </div>
+              <p>データを読み込んでいます...</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- 凡例 -->
+<div class="card blue lighten-5">
+  <div class="card-content">
+    <span class="card-title">
+      <i class="material-icons left">help_outline</i>
+      ステータスについて
+    </span>
+    <p>
+      <span class="chip chip-assigned" style="margin-right: 10px;">配車済</span>
+      車両の割り当てが完了した依頼です
+    </p>
+    <p style="margin-top: 10px;">
+      <span class="chip chip-unassigned" style="margin-right: 10px;">未配車</span>
+      まだ車両が割り当てられていない依頼です
+    </p>
+  </div>
+</div>

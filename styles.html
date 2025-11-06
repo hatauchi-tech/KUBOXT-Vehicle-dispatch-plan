@@ -1,0 +1,648 @@
+/**
+ * =============================================================================
+ * styles.css - カスタムスタイルシート
+ * =============================================================================
+ * 
+ * Materialize CSSをベースに、配車計画支援アプリ専用のスタイルを定義します。
+ * 
+ * 【構成】
+ * 1. 基本スタイル（ベース、変数）
+ * 2. レイアウト（コンテナ、グリッド）
+ * 3. コンポーネント（カード、テーブル、フォーム、ボタン）
+ * 4. ページ固有スタイル
+ * 5. レスポンシブデザイン
+ */
+
+/* =============================================================================
+   1. 基本スタイル
+   ============================================================================= */
+
+:root {
+  /* カラーパレット */
+  --primary-color: #2196F3;
+  --primary-dark: #1976D2;
+  --primary-light: #BBDEFB;
+  --accent-color: #FF5722;
+  --success-color: #4CAF50;
+  --warning-color: #FF9800;
+  --error-color: #F44336;
+  --text-primary: #212121;
+  --text-secondary: #757575;
+  --background-color: #F5F5F5;
+  --card-background: #FFFFFF;
+  --border-color: #E0E0E0;
+  
+  /* スペーシング */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  
+  /* ボーダー */
+  --border-radius: 4px;
+  --border-radius-lg: 8px;
+  
+  /* シャドウ */
+  --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.15);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.2);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Roboto', 'Noto Sans JP', sans-serif;
+  color: var(--text-primary);
+  background-color: var(--background-color);
+  margin: 0;
+  padding: 0;
+  line-height: 1.6;
+}
+
+/* =============================================================================
+   2. レイアウト
+   ============================================================================= */
+
+.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content {
+  flex: 1;
+  padding: var(--spacing-lg);
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.page-header {
+  margin-bottom: var(--spacing-xl);
+  padding-bottom: var(--spacing-md);
+  border-bottom: 2px solid var(--primary-color);
+}
+
+.page-title {
+  font-size: 2rem;
+  font-weight: 500;
+  color: var(--primary-dark);
+  margin: 0 0 var(--spacing-sm) 0;
+}
+
+.page-subtitle {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* =============================================================================
+   3. コンポーネント
+   ============================================================================= */
+
+/* ナビゲーション */
+nav {
+  box-shadow: var(--shadow-md);
+}
+
+nav .brand-logo {
+  font-weight: 500;
+}
+
+/* カード */
+.card {
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-sm);
+  margin-bottom: var(--spacing-lg);
+  background-color: var(--card-background);
+}
+
+.card-content {
+  padding: var(--spacing-lg);
+}
+
+.card-title {
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: var(--primary-dark);
+  margin-bottom: var(--spacing-md);
+}
+
+/* フォーム */
+.input-field {
+  margin-bottom: var(--spacing-lg);
+}
+
+.input-field label {
+  color: var(--text-secondary);
+}
+
+.input-field input:focus,
+.input-field textarea:focus,
+.input-field select:focus {
+  border-bottom: 2px solid var(--primary-color) !important;
+  box-shadow: 0 1px 0 0 var(--primary-color) !important;
+}
+
+.input-field input:focus + label,
+.input-field textarea:focus + label,
+.input-field select:focus + label {
+  color: var(--primary-color) !important;
+}
+
+.input-field .helper-text {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.input-field .error-text {
+  color: var(--error-color);
+  font-size: 0.875rem;
+  margin-top: var(--spacing-xs);
+}
+
+/* ボタン */
+.btn {
+  border-radius: var(--border-radius);
+  text-transform: none;
+  font-weight: 500;
+  box-shadow: var(--shadow-sm);
+  transition: all 0.3s ease;
+}
+
+.btn:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-dark);
+}
+
+.btn-success {
+  background-color: var(--success-color);
+}
+
+.btn-warning {
+  background-color: var(--warning-color);
+}
+
+.btn-error {
+  background-color: var(--error-color);
+}
+
+.btn-large {
+  padding: 0 var(--spacing-xl);
+  height: 48px;
+  line-height: 48px;
+}
+
+/* テーブル */
+.table-container {
+  overflow-x: auto;
+  margin-top: var(--spacing-md);
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background-color: var(--card-background);
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--border-radius);
+}
+
+thead {
+  background-color: var(--primary-light);
+}
+
+thead th {
+  padding: var(--spacing-md);
+  text-align: left;
+  font-weight: 500;
+  color: var(--primary-dark);
+  border-bottom: 2px solid var(--primary-color);
+}
+
+tbody td {
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--border-color);
+}
+
+tbody tr:hover {
+  background-color: #F5F5F5;
+}
+
+tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* チップ・バッジ */
+.chip {
+  border-radius: var(--border-radius);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.chip-assigned {
+  background-color: var(--success-color);
+  color: white;
+}
+
+.chip-unassigned {
+  background-color: var(--warning-color);
+  color: white;
+}
+
+.chip-info {
+  background-color: var(--primary-light);
+  color: var(--primary-dark);
+}
+
+/* フィルターセクション */
+.filter-section {
+  background-color: var(--card-background);
+  padding: var(--spacing-lg);
+  border-radius: var(--border-radius-lg);
+  margin-bottom: var(--spacing-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.filter-title {
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: var(--primary-dark);
+  margin-bottom: var(--spacing-md);
+}
+
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+  align-items: flex-end;
+}
+
+.filter-row .input-field {
+  flex: 1;
+  min-width: 200px;
+  margin-bottom: 0;
+}
+
+/* ローディング */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.loading-spinner {
+  background-color: white;
+  padding: var(--spacing-xl);
+  border-radius: var(--border-radius-lg);
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+
+.loading-spinner .preloader-wrapper {
+  margin: 0 auto var(--spacing-md) auto;
+}
+
+/* トースト・メッセージ */
+.toast {
+  border-radius: var(--border-radius);
+  font-weight: 500;
+}
+
+.toast.success {
+  background-color: var(--success-color);
+}
+
+.toast.error {
+  background-color: var(--error-color);
+}
+
+/* =============================================================================
+   4. ページ固有スタイル
+   ============================================================================= */
+
+/* 依頼入力画面 */
+.request-form .form-section {
+  margin-bottom: var(--spacing-xl);
+  padding-bottom: var(--spacing-lg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.request-form .form-section:last-child {
+  border-bottom: none;
+}
+
+.request-form .section-title {
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: var(--primary-dark);
+  margin-bottom: var(--spacing-md);
+  display: flex;
+  align-items: center;
+}
+
+.request-form .section-title i {
+  margin-right: var(--spacing-sm);
+}
+
+.request-form .form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-md);
+  margin-top: var(--spacing-xl);
+}
+
+/* 依頼確認画面 */
+.request-list .table-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.request-list .status-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: var(--border-radius);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.request-list .status-assigned {
+  background-color: var(--success-color);
+  color: white;
+}
+
+.request-list .status-unassigned {
+  background-color: var(--warning-color);
+  color: white;
+}
+
+/* 計画入力画面（ダッシュボード） */
+.dispatch-plan .view-tabs {
+  margin-bottom: var(--spacing-lg);
+}
+
+.dispatch-plan .request-card {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  background-color: var(--card-background);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.dispatch-plan .request-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--primary-color);
+}
+
+.dispatch-plan .request-card.selected {
+  border-color: var(--primary-color);
+  border-width: 2px;
+  background-color: var(--primary-light);
+}
+
+.dispatch-plan .request-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.dispatch-plan .request-id {
+  font-weight: 500;
+  color: var(--primary-dark);
+}
+
+.dispatch-plan .request-info {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: var(--spacing-xs) 0;
+}
+
+.dispatch-plan .vehicle-selector {
+  margin-top: var(--spacing-md);
+  padding: var(--spacing-md);
+  background-color: #F5F5F5;
+  border-radius: var(--border-radius);
+}
+
+.dispatch-plan .vehicle-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.dispatch-plan .vehicle-item {
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
+  background-color: var(--card-background);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.dispatch-plan .vehicle-item:hover {
+  border-color: var(--primary-color);
+  background-color: var(--primary-light);
+}
+
+.dispatch-plan .vehicle-item.unavailable {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: #FAFAFA;
+}
+
+.dispatch-plan .vehicle-item.unavailable:hover {
+  border-color: var(--border-color);
+  background-color: #FAFAFA;
+}
+
+/* =============================================================================
+   5. ユーティリティクラス
+   ============================================================================= */
+
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-primary {
+  color: var(--primary-color);
+}
+
+.text-success {
+  color: var(--success-color);
+}
+
+.text-warning {
+  color: var(--warning-color);
+}
+
+.text-error {
+  color: var(--error-color);
+}
+
+.mt-sm { margin-top: var(--spacing-sm); }
+.mt-md { margin-top: var(--spacing-md); }
+.mt-lg { margin-top: var(--spacing-lg); }
+.mt-xl { margin-top: var(--spacing-xl); }
+
+.mb-sm { margin-bottom: var(--spacing-sm); }
+.mb-md { margin-bottom: var(--spacing-md); }
+.mb-lg { margin-bottom: var(--spacing-lg); }
+.mb-xl { margin-bottom: var(--spacing-xl); }
+
+.p-sm { padding: var(--spacing-sm); }
+.p-md { padding: var(--spacing-md); }
+.p-lg { padding: var(--spacing-lg); }
+.p-xl { padding: var(--spacing-xl); }
+
+.hidden {
+  display: none !important;
+}
+
+.visible {
+  display: block !important;
+}
+
+/* =============================================================================
+   6. レスポンシブデザイン
+   ============================================================================= */
+
+@media screen and (max-width: 992px) {
+  .main-content {
+    padding: var(--spacing-md);
+  }
+  
+  .page-title {
+    font-size: 1.5rem;
+  }
+  
+  .filter-row {
+    flex-direction: column;
+  }
+  
+  .filter-row .input-field {
+    width: 100%;
+  }
+}
+
+@media screen and (max-width: 600px) {
+  .main-content {
+    padding: var(--spacing-sm);
+  }
+  
+  .card-content {
+    padding: var(--spacing-md);
+  }
+  
+  .page-title {
+    font-size: 1.25rem;
+  }
+  
+  table {
+    font-size: 0.875rem;
+  }
+  
+  thead th,
+  tbody td {
+    padding: var(--spacing-sm);
+  }
+  
+  .btn {
+    width: 100%;
+    margin-bottom: var(--spacing-sm);
+  }
+  
+  .request-form .form-actions {
+    flex-direction: column;
+  }
+}
+
+/* =============================================================================
+   7. アニメーション
+   ============================================================================= */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.slide-in {
+  animation: slideIn 0.3s ease-in-out;
+}
+
+/* =============================================================================
+   8. プリント用スタイル
+   ============================================================================= */
+
+@media print {
+  nav,
+  .filter-section,
+  .btn,
+  .no-print {
+    display: none !important;
+  }
+  
+  .main-content {
+    max-width: 100%;
+    padding: 0;
+  }
+  
+  .card {
+    box-shadow: none;
+    border: 1px solid var(--border-color);
+  }
+  
+  table {
+    page-break-inside: auto;
+  }
+  
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+}

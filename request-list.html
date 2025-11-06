@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><?= appName ?> - 依頼一覧</title>
+  
+  <!-- Materialize CSS -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
+  
+  <!-- Material Icons -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- Custom CSS -->
+  <style>
+    <?!= include('styles'); ?>
+  </style>
+</head>
+<body>
+  <!-- ナビゲーションバー -->
+  <nav class="blue darken-1">
+    <div class="nav-wrapper">
+      <a href="#" id="brandLogo" class="brand-logo" style="padding-left: 20px;">
+        <i class="material-icons left">local_shipping</i>
+        <?= appName ?>
+      </a>
+      <a href="#" data-target="mobile-menu" class="sidenav-trigger">
+        <i class="material-icons">menu</i>
+      </a>
+      <ul class="right hide-on-med-and-down">
+        <li><a href="#" data-page="request-form">
+          <i class="material-icons left">add</i>依頼登録</a></li>
+        <li class="active"><a href="#" data-page="request-list">
+          <i class="material-icons left">list</i>依頼一覧</a></li>
+        <li><a href="#" data-page="dispatch-plan">
+          <i class="material-icons left">dashboard</i>配車計画</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- モバイル用サイドナビ -->
+  <ul class="sidenav" id="mobile-menu">
+    <li><a href="#" data-page="request-form">
+      <i class="material-icons">add</i>依頼登録</a></li>
+    <li class="active"><a href="#" data-page="request-list">
+      <i class="material-icons">list</i>依頼一覧</a></li>
+    <li><a href="#" data-page="dispatch-plan">
+      <i class="material-icons">dashboard</i>配車計画</a></li>
+  </ul>
+
+  <!-- メインコンテンツ -->
+  <div class="app-container">
+    <main class="main-content">
+      
+      <!-- 依頼確認画面 (SCR-02) -->
+      <div class="page-header">
+        <h1 class="page-title">
+          <i class="material-icons large" style="vertical-align: middle;">list</i>
+          依頼一覧
+        </h1>
+        <p class="page-subtitle">登録済みの依頼データを確認します</p>
+      </div>
+
+      <!-- フィルターセクション -->
+      <div class="filter-section">
+        <h5 class="filter-title">
+          <i class="material-icons" style="vertical-align: middle;">filter_list</i>
+          絞り込み条件
+        </h5>
+        
+        <div class="filter-row">
+          <div class="input-field">
+            <input type="date" id="filterStartDate" class="datepicker">
+            <label for="filterStartDate" class="active">積込日（開始）</label>
+          </div>
+          
+          <div class="input-field">
+            <input type="date" id="filterEndDate" class="datepicker">
+            <label for="filterEndDate" class="active">積込日（終了）</label>
+          </div>
+          
+          <div class="input-field">
+            <select id="filterShipper">
+              <option value="">すべて</option>
+            </select>
+            <label>荷主</label>
+          </div>
+          
+          <div class="input-field">
+            <select id="filterStatus">
+              <option value="">すべて</option>
+              <option value="assigned">配車済</option>
+              <option value="unassigned">未配車</option>
+            </select>
+            <label>ステータス</label>
+          </div>
+          
+          <button id="applyFilterBtn" class="btn waves-effect waves-light blue darken-1">
+            <i class="material-icons left">search</i>
+            絞り込み
+          </button>
+          
+          <button id="resetFilterBtn" class="btn waves-effect waves-light grey">
+            <i class="material-icons left">refresh</i>
+            リセット
+          </button>
+        </div>
+      </div>
+
+      <!-- テーブル -->
+      <div class="card">
+        <div class="card-content">
+          <div class="card-title">
+            <span>依頼データ一覧</span>
+            <span class="right" id="requestCount" style="font-size: 1rem; color: #757575;">
+              <!-- JavaScriptで件数を表示 -->
+            </span>
+          </div>
+          
+          <div class="table-container">
+            <table class="striped responsive-table">
+              <thead>
+                <tr>
+                  <th>依頼ID</th>
+                  <th>積込日</th>
+                  <th>荷主</th>
+                  <th>積込地</th>
+                  <th>品名</th>
+                  <th>依頼車種</th>
+                  <th>ナンバー</th>
+                  <th>運転手</th>
+                  <th>ステータス</th>
+                </tr>
+              </thead>
+              <tbody id="requestTableBody">
+                <!-- JavaScriptで動的に生成 -->
+                <tr>
+                  <td colspan="9" class="text-center">
+                    <div class="preloader-wrapper small active">
+                      <div class="spinner-layer spinner-blue-only">
+                        <div class="circle-clipper left">
+                          <div class="circle"></div>
+                        </div>
+                        <div class="gap-patch">
+                          <div class="circle"></div>
+                        </div>
+                        <div class="circle-clipper right">
+                          <div class="circle"></div>
+                        </div>
+                      </div>
+                    </div>
+                    <p>データを読み込んでいます...</p>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- 凡例 -->
+      <div class="card blue lighten-5">
+        <div class="card-content">
+          <span class="card-title">
+            <i class="material-icons left">help_outline</i>
+            ステータスについて
+          </span>
+          <p>
+            <span class="chip chip-assigned" style="margin-right: 10px;">配車済</span>
+            車両の割り当てが完了した依頼です
+          </p>
+          <p style="margin-top: 10px;">
+            <span class="chip chip-unassigned" style="margin-right: 10px;">未配車</span>
+            まだ車両が割り当てられていない依頼です
+          </p>
+        </div>
+      </div>
+      
+    </main>
+  </div>
+
+  <!-- フッター -->
+  <footer class="page-footer blue darken-1">
+    <div class="container">
+      <div class="row">
+        <div class="col l12 s12 center-align">
+          <p class="white-text">&copy; 2025 <?= appName ?> v<?= appVersion ?></p>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Materialize JavaScript -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+  <!-- ★★★ APP_CONFIGの定義 ★★★ -->
+  <script>
+    // app.jsが期待するグローバル設定を定義
+    window.APP_CONFIG = {
+      currentPage: '<?= currentPage ?>',
+      baseUrl: '<?= baseUrl ?>'
+    };
+    console.log('APP_CONFIG initialized:', window.APP_CONFIG);
+  </script>
+
+  
+  <!-- App code from app.html -->
+  <?!= include('app'); ?>
+</body>
+</html>

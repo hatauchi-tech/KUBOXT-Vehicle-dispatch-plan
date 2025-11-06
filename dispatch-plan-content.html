@@ -1,0 +1,156 @@
+<!-- 計画入力画面 (SCR-03) - コンテンツ部分のみ -->
+<div class="page-header">
+  <h1 class="page-title">
+    <i class="material-icons large" style="vertical-align: middle;">dashboard</i>
+    配車計画
+  </h1>
+  <p class="page-subtitle">未配車の依頼に車両を割り当てます</p>
+</div>
+
+<!-- タブナビゲーション -->
+<div class="card">
+  <div class="card-content">
+    <ul class="tabs view-tabs">
+      <li class="tab"><a class="active" href="#view-today">当日の配送計画</a></li>
+      <li class="tab"><a href="#view-upcoming">当日以降の積み込み計画</a></li>
+    </ul>
+  </div>
+</div>
+
+<!-- タブコンテンツ1: 当日の配送計画 -->
+<div id="view-today" class="dispatch-plan">
+  <div class="row">
+    <div class="col s12">
+      <div class="card">
+        <div class="card-content">
+          <span class="card-title">当日の配送計画</span>
+          <p class="text-secondary">本日の配車状況を表示します</p>
+
+          <div id="todayRequests" class="mt-md">
+            <!-- JavaScriptで動的に生成 -->
+            <p class="text-center text-secondary">データを読み込んでいます...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- タブコンテンツ2: 当日以降の積み込み計画 -->
+<div id="view-upcoming" class="dispatch-plan">
+
+  <!-- フィルターセクション -->
+  <div class="filter-section">
+    <h5 class="filter-title">
+      <i class="material-icons" style="vertical-align: middle;">filter_list</i>
+      絞り込み条件
+    </h5>
+
+    <div class="filter-row">
+      <div class="input-field">
+        <input type="date" id="planFilterDate" class="datepicker">
+        <label for="planFilterDate" class="active">積込日</label>
+      </div>
+
+      <div class="input-field">
+        <select id="planFilterShipper">
+          <option value="">すべて</option>
+        </select>
+        <label>荷主</label>
+      </div>
+
+      <div class="input-field">
+        <select id="planFilterType">
+          <option value="">すべて</option>
+        </select>
+        <label>車種</label>
+      </div>
+
+      <div class="input-field">
+        <label>
+          <input type="checkbox" id="planFilterUnassigned" checked />
+          <span>未配車のみ表示</span>
+        </label>
+      </div>
+
+      <button id="planApplyFilterBtn" class="btn waves-effect waves-light blue darken-1">
+        <i class="material-icons left">search</i>
+        絞り込み
+      </button>
+
+      <button id="planResetFilterBtn" class="btn waves-effect waves-light grey">
+        <i class="material-icons left">refresh</i>
+        リセット
+      </button>
+    </div>
+  </div>
+
+  <!-- 未配車依頼リスト -->
+  <div class="row">
+    <div class="col s12 m6">
+      <div class="card">
+        <div class="card-content">
+          <span class="card-title">
+            未配車の依頼
+            <span id="unassignedCount" style="font-size: 1rem; color: #757575;">
+              <!-- JavaScriptで件数を表示 -->
+            </span>
+          </span>
+
+          <div id="unassignedRequests" style="max-height: 600px; overflow-y: auto;">
+            <!-- JavaScriptで動的に生成 -->
+            <p class="text-center text-secondary">データを読み込んでいます...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 車両選択パネル -->
+    <div class="col s12 m6">
+      <div class="card" id="vehicleSelectorCard" style="display: none;">
+        <div class="card-content">
+          <span class="card-title">車両選択</span>
+
+          <div id="selectedRequestInfo" class="mb-md">
+            <!-- 選択された依頼の情報 -->
+          </div>
+
+          <div class="divider mb-md"></div>
+
+          <p class="text-secondary mb-sm">割り当て可能な車両:</p>
+
+          <div id="availableVehicles" class="vehicle-list">
+            <!-- JavaScriptで動的に生成 -->
+          </div>
+
+          <div class="mt-md">
+            <button id="cancelVehicleSelectBtn" class="btn waves-effect waves-light grey">
+              <i class="material-icons left">cancel</i>
+              キャンセル
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ヘルプカード -->
+      <div class="card blue lighten-5" id="helpCard">
+        <div class="card-content">
+          <span class="card-title">
+            <i class="material-icons left">help_outline</i>
+            使い方
+          </span>
+          <ol class="browser-default">
+            <li>左側の未配車依頼リストから、配車したい依頼をクリックします</li>
+            <li>右側に割り当て可能な車両が表示されます</li>
+            <li>車両をクリックして割り当てを実行します</li>
+            <li>割り当てが完了すると、依頼が未配車リストから消えます</li>
+          </ol>
+          <p class="mt-md">
+            <strong>注意:</strong>
+            既に他の依頼に割り当てられている車両や、依頼車種に対応していない車両は表示されません。
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

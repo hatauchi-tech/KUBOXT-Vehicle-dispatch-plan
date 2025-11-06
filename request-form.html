@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><?= appName ?> - 依頼登録</title>
+  
+  <!-- Materialize CSS -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css" rel="stylesheet">
+  
+  <!-- Material Icons -->
+  <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+  
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- Custom CSS -->
+  <style>
+    <?!= include('styles'); ?>
+  </style>
+</head>
+<body>
+  <!-- ナビゲーションバー -->
+  <nav class="blue darken-1">
+    <div class="nav-wrapper">
+      <a href="#" id="brandLogo" class="brand-logo" style="padding-left: 20px;">
+        <i class="material-icons left">local_shipping</i>
+        <?= appName ?>
+      </a>
+      <a href="#" data-target="mobile-menu" class="sidenav-trigger">
+        <i class="material-icons">menu</i>
+      </a>
+      <ul class="right hide-on-med-and-down">
+        <li class="active"><a href="#" data-page="request-form">
+          <i class="material-icons left">add</i>依頼登録</a></li>
+        <li><a href="#" data-page="request-list">
+          <i class="material-icons left">list</i>依頼一覧</a></li>
+        <li><a href="#" data-page="dispatch-plan">
+          <i class="material-icons left">dashboard</i>配車計画</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- モバイル用サイドナビ -->
+  <ul class="sidenav" id="mobile-menu">
+    <li class="active"><a href="#" data-page="request-form">
+      <i class="material-icons">add</i>依頼登録</a></li>
+    <li><a href="#" data-page="request-list">
+      <i class="material-icons">list</i>依頼一覧</a></li>
+    <li><a href="#" data-page="dispatch-plan">
+      <i class="material-icons">dashboard</i>配車計画</a></li>
+  </ul>
+
+  <!-- メインコンテンツ -->
+  <div class="app-container">
+    <main class="main-content">
+      
+      <!-- 依頼入力画面 (SCR-01) -->
+      <div class="page-header">
+        <h1 class="page-title">
+          <i class="material-icons large" style="vertical-align: middle;">add_circle</i>
+          依頼登録
+        </h1>
+        <p class="page-subtitle">新規配送依頼を登録します</p>
+      </div>
+
+      <div class="card">
+        <div class="card-content">
+          <form id="requestForm" class="request-form">
+            
+            <!-- 基本情報セクション -->
+            <div class="form-section">
+              <h5 class="section-title">
+                <i class="material-icons">info</i>
+                基本情報
+              </h5>
+              
+              <div class="row">
+                <div class="input-field col s12 m6">
+                  <input type="date" id="receivedDate" name="receivedDate" required>
+                  <label for="receivedDate" class="active">受付日 <span class="red-text">*</span></label>
+                </div>
+                
+                <div class="input-field col s12 m6">
+                  <select id="shipper" name="shipper" required>
+                    <option value="" disabled selected>選択してください</option>
+                  </select>
+                  <label>荷主 <span class="red-text">*</span></label>
+                </div>
+              </div>
+              
+              <div class="row">
+                <div class="input-field col s12">
+                  <input type="text" id="productName" name="productName" required>
+                  <label for="productName">品名 <span class="red-text">*</span></label>
+                </div>
+              </div>
+              
+              <div class="row">
+                <div class="input-field col s12">
+                  <select id="requestType" name="requestType" required>
+                    <option value="" disabled selected>選択してください</option>
+                  </select>
+                  <label>依頼車種 <span class="red-text">*</span></label>
+                  <span class="helper-text">配車する車両の種類を選択してください</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 積込情報セクション -->
+            <div class="form-section">
+              <h5 class="section-title">
+                <i class="material-icons">arrow_upward</i>
+                積込情報
+              </h5>
+              
+              <div class="row">
+                <div class="input-field col s12 m6">
+                  <input type="date" id="loadDate" name="loadDate" class="datepicker" required>
+                  <label for="loadDate" class="active">積込日 <span class="red-text">*</span></label>
+                </div>
+                
+                <div class="input-field col s12 m6">
+                  <input type="time" id="loadTime" name="loadTime" class="timepicker">
+                  <label for="loadTime" class="active">積込時間</label>
+                </div>
+              </div>
+              
+              <div class="row">
+                <div class="input-field col s12">
+                  <input type="text" id="loadPlace1" name="loadPlace1" required>
+                  <label for="loadPlace1">積込地1 <span class="red-text">*</span></label>
+                  <span class="helper-text">例: 〇〇県〇〇市〇〇町1-2-3</span>
+                </div>
+              </div>
+              
+              <div class="row">
+                <div class="input-field col s12">
+                  <input type="text" id="loadPlace2" name="loadPlace2">
+                  <label for="loadPlace2">積込地2</label>
+                  <span class="helper-text">2箇所目の積込地がある場合に入力してください</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- 荷卸情報セクション -->
+            <div class="form-section">
+              <h5 class="section-title">
+                <i class="material-icons">arrow_downward</i>
+                荷卸情報
+              </h5>
+              
+              <div class="row">
+                <div class="input-field col s12 m6">
+                  <input type="date" id="unloadDate" name="unloadDate" class="datepicker" required>
+                  <label for="unloadDate" class="active">荷卸日 <span class="red-text">*</span></label>
+                </div>
+                
+                <div class="input-field col s12 m6">
+                  <input type="time" id="unloadTime" name="unloadTime" class="timepicker">
+                  <label for="unloadTime" class="active">荷卸時間</label>
+                </div>
+              </div>
+              
+              <div class="row">
+                <div class="input-field col s12">
+                  <input type="text" id="unloadPlace1" name="unloadPlace1" required>
+                  <label for="unloadPlace1">荷卸地1 <span class="red-text">*</span></label>
+                  <span class="helper-text">例: 〇〇県〇〇市〇〇町1-2-3</span>
+                </div>
+              </div>
+              
+              <div class="row">
+                <div class="input-field col s12">
+                  <input type="text" id="unloadPlace2" name="unloadPlace2">
+                  <label for="unloadPlace2">荷卸地2</label>
+                  <span class="helper-text">2箇所目の荷卸地がある場合に入力してください</span>
+                </div>
+              </div>
+            </div>
+            
+            <!-- フォームアクション -->
+            <div class="form-actions">
+              <button type="button" id="resetBtn" class="btn btn-large waves-effect waves-light grey">
+                <i class="material-icons left">clear</i>
+                クリア
+              </button>
+              <button type="submit" class="btn btn-large waves-effect waves-light blue darken-1">
+                <i class="material-icons left">save</i>
+                登録
+              </button>
+            </div>
+            
+          </form>
+        </div>
+      </div>
+
+      <!-- 注意事項 -->
+      <div class="card blue lighten-5">
+        <div class="card-content">
+          <span class="card-title">
+            <i class="material-icons left">info_outline</i>
+            入力時の注意事項
+          </span>
+          <ul class="browser-default">
+            <li><span class="red-text">*</span>印の項目は必須入力です</li>
+            <li>積込日と荷卸日は、荷卸日が積込日以降になるように入力してください</li>
+            <li>依頼車種は、実際に配車する車両の種類を選択してください</li>
+            <li>時間が未定の場合は、時間の入力を空欄のままにしてください</li>
+          </ul>
+        </div>
+      </div>
+      
+    </main>
+  </div>
+
+  <!-- フッター -->
+  <footer class="page-footer blue darken-1">
+    <div class="container">
+      <div class="row">
+        <div class="col l12 s12 center-align">
+          <p class="white-text">&copy; 2025 <?= appName ?> v<?= appVersion ?></p>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Materialize JavaScript -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+  <!-- ★★★ APP_CONFIGの定義 ★★★ -->
+  <script>
+    // app.jsが期待するグローバル設定を定義
+    window.APP_CONFIG = {
+      currentPage: '<?= currentPage ?>',
+      baseUrl: '<?= baseUrl ?>'
+    };
+    console.log('APP_CONFIG initialized:', window.APP_CONFIG);
+  </script>
+  
+  <!-- App code from app.html (includes <script> tags) -->
+  <?!= include('app'); ?>
+</body>
+</html>

@@ -1,0 +1,1279 @@
+<script>
+/**
+ * =============================================================================
+ * app.js - クライアントサイドメインロジック (v3 - 根本修正版)
+ * =============================================================================
+ */
+
+(function() {
+  'use strict';
+  
+  // ===========================================================================
+  // ★ サーバーサイドからの変数取得 ★
+  // ===========================================================================
+  
+  // ★ 修正: グローバルスコープから変数を取得
+  // (これらの変数は、呼び出し元のHTMLファイル (request-form.htmlなど) で定義されます)
+  if (!window.APP_CONFIG) {
+    console.error('[ERROR] APP_CONFIG が定義されていません。呼び出し元のHTMLファイルを確認してください。');
+    console.error('[ERROR] window:', window);
+    console.error('[ERROR] このエラーが発生した場合、app.htmlがAPP_CONFIGの定義より前に読み込まれています。');
+    // return を削除し、エラーを throw してアプリ全体を停止させる
+    throw new Error('APP_CONFIG が定義されていません');
+  }
+  const CURRENT_PAGE = window.APP_CONFIG.currentPage;
+  const BASE_URL = window.APP_CONFIG.baseUrl;
+
+  console.log('[DEBUG] APP_CONFIG loaded:', window.APP_CONFIG);
+  console.log('[DEBUG] CURRENT_PAGE:', CURRENT_PAGE);
+  console.log('[DEBUG] BASE_URL:', BASE_URL);
+  
+  // ===========================================================================
+  // グローバルステート
+  // ===========================================================================
+  
+  const AppState = {
+    currentPage: CURRENT_PAGE,
+    shippers: [],
+    vehicles: [],
+    requestTypes: [],
+    requests: [],
+    selectedRequest: null,
+    loading: false
+  };
+  
+  // ===========================================================================
+  // API通信モジュール
+  // ===========================================================================
+  
+  const API = {
+    /**
+     * GAS関数を呼び出す共通メソッド
+     */
+    call(functionName, ...args) {
+      return new Promise((resolve, reject) => {
+        google.script.run
+          .withSuccessHandler(result => {
+            if (result && result.success === false) {
+              reject(new Error(result.message || 'エラーが発生しました'));
+            } else {
+              resolve(result);
+            }
+          })
+          .withFailureHandler(error => {
+            console.error(`API Error [${functionName}]:`, error);
+            reject(new Error('サーバーとの通信に失敗しました'));
+          })
+          [functionName](...args);
+      });
+    },
+    
+    // ... (apiGetAllShippers から apiGetAppInfo までは既存のコードと同一) ...
+    
+    /**
+     * すべての荷主データを取得
+     */
+    async getAllShippers() {
+      const result = await this.call('apiGetAllShippers');
+      return result.data || [];
+    },
+    
+    /**
+     * すべての車両データを取得
+     */
+    async getAllVehicles() {
+      const result = await this.call('apiGetAllVehicles');
+      return result.data || [];
+    },
+    
+    /**
+     * ユニークな依頼車種リストを取得
+     */
+    async getUniqueRequestTypes() {
+      const result = await this.call('apiGetUniqueRequestTypes');
+      return result.data || [];
+    },
+    
+    /**
+     * すべての依頼データを取得
+     */
+    async getAllRequests() {
+      const result = await this.call('apiGetAllRequests');
+      return result.data || [];
+    },
+    
+    /**
+     * 未配車の依頼データを取得
+     */
+    async getUnassignedRequests() {
+      const result = await this.call('apiGetUnassignedRequests');
+      return result.data || [];
+    },
+    
+    /**
+     * 日付範囲で依頼データを取得
+     */
+    async getRequestsByDateRange(startDate, endDate) {
+      const result = await this.call('apiGetRequestsByDateRange', startDate, endDate);
+      return result.data || [];
+    },
+    
+    /**
+     * 新しい依頼を登録
+     */
+    async createRequest(requestData) {
+      const requestJson = JSON.stringify(requestData);
+      return await this.call('apiCreateRequest', requestJson);
+    },
+    
+    /**
+     * 依頼に車両を割り当て
+     */
+    async assignVehicle(requestId, vehicleNumber) {
+      return await this.call('apiAssignVehicle', requestId, vehicleNumber);
+    },
+    
+    /**
+     * 依頼の車両割り当てを解除
+     */
+    async unassignVehicle(requestId) {
+      return await this.call('apiUnassignVehicle', requestId);
+    },
+    
+    /**
+     * 指定された依頼に割り当て可能な車両を取得
+     */
+    async getAvailableVehicles(requestData) {
+      const requestJson = JSON.stringify(requestData);
+      const result = await this.call('apiGetAvailableVehicles', requestJson);
+      return result.data || [];
+    },
+    
+    /**
+     * アプリケーション情報を取得
+     */
+    async getAppInfo() {
+      const result = await this.call('apiGetAppInfo');
+      return result.data || {};
+    }
+  };
+  
+  // ===========================================================================
+  // UI制御モジュール
+  // ===========================================================================
+  
+  const UI = {
+    // ... (showLoading, hideLoading, showToast, showError, showSuccess は既存のコードと同一) ...
+    
+    /**
+     * ローディング表示を制御
+     */
+    showLoading(message = '読み込み中...') {
+      AppState.loading = true;
+      const loadingHtml = `
+        <div class="loading-overlay" id="loadingOverlay">
+          <div class="loading-spinner">
+            <div class="preloader-wrapper active">
+              <div class="spinner-layer spinner-blue-only">
+                <div class="circle-clipper left">
+                  <div class="circle"></div>
+                </div>
+                <div class="gap-patch">
+                  <div class="circle"></div>
+                </div>
+                <div class="circle-clipper right">
+                  <div class="circle"></div>
+                </div>
+              </div>
+            </div>
+            <p>${message}</p>
+          </div>
+        </div>
+      `;
+      this.hideLoading();
+      document.body.insertAdjacentHTML('beforeend', loadingHtml);
+    },
+    
+    hideLoading() {
+      const overlay = document.getElementById('loadingOverlay');
+      if (overlay) {
+        overlay.remove();
+      }
+      // Fallback: Clean up any orphaned overlays by class name
+      document.querySelectorAll('.loading-overlay').forEach(el => {
+        console.warn('[CLEANUP] Removing orphaned loading overlay');
+        el.remove();
+      });
+      AppState.loading = false;
+    },
+    
+    /**
+     * トーストメッセージを表示
+     */
+    showToast(message, type = 'info', duration = 3000) {
+      const className = type === 'success' ? 'success' : 
+                        type === 'error' ? 'error' : '';
+      M.toast({ html: message, classes: className, displayLength: duration });
+    },
+    
+    /**
+     * エラーメッセージを表示
+     */
+    showError(message) {
+      this.showToast(message, 'error', 5000);
+    },
+    
+    /**
+     * 成功メッセージを表示
+     */
+    showSuccess(message) {
+      this.showToast(message, 'success', 3000);
+    },
+    
+    /**
+     * 確認ダイアログを表示 (注: window.confirm はデバッグ用。本番ではモーダル推奨)
+     */
+    confirm(message) {
+      return window.confirm(message);
+    }
+  };
+  
+  // ===========================================================================
+  // バリデーションモジュール
+  // ===========================================================================
+  
+  const Validator = {
+    // ... (Validator モジュールは既存のコードと同一) ...
+    /**
+     * 必須チェック
+     */
+    required(value, fieldName) {
+      if (!value || String(value).trim() === '') {
+        return `${fieldName}は必須項目です`;
+      }
+      return null;
+    },
+    
+    /**
+     * 日付の妥当性チェック
+     */
+    isValidDate(value, fieldName) {
+      if (!value) {
+        return `${fieldName}を入力してください`;
+      }
+      const date = new Date(value);
+      if (isNaN(date.getTime())) {
+        return `${fieldName}の形式が正しくありません`;
+      }
+      return null;
+    },
+    
+    /**
+     * 日付範囲チェック
+     */
+    dateRange(startDate, endDate, startFieldName, endFieldName) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      if (start > end) {
+        return `${endFieldName}は${startFieldName}以降の日付を指定してください`;
+      }
+      return null;
+    },
+    
+    /**
+     * フォームバリデーション
+     */
+    validateForm(formData, rules) {
+      const errors = [];
+      for (const [field, rule] of Object.entries(rules)) {
+        const value = formData[field];
+        if (rule.required) {
+          const error = this.required(value, rule.label);
+          if (error) errors.push(error);
+        }
+        if (rule.type === 'date' && value) {
+          const error = this.isValidDate(value, rule.label);
+          if (error) errors.push(error);
+        }
+      }
+      return errors;
+    }
+  };
+  
+  // ===========================================================================
+  // ユーティリティモジュール
+  // ===========================================================================
+  
+  const Utils = {
+    // ... (Utils モジュールは既存のコードと同一) ...
+    /**
+     * 日付を yyyy-MM-dd 形式でフォーマット
+     */
+    formatDate(date) {
+      if (!date) return '';
+      const d = new Date(date);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    },
+    
+    /**
+     * 日付を yyyy年MM月dd日 形式でフォーマット
+     */
+    formatDateJP(date) {
+      if (!date) return '';
+      const d = new Date(date);
+      const year = d.getFullYear();
+      const month = d.getMonth() + 1;
+      const day = d.getDate();
+      return `${year}年${month}月${day}日`;
+    },
+    
+    /**
+     * 今日の日付を取得
+     */
+    getToday() {
+      return this.formatDate(new Date());
+    },
+    
+    /**
+     * 配列をフィルタリング
+     */
+    filterArray(array, filterFn) {
+      if (!Array.isArray(array)) return [];
+      return array.filter(filterFn);
+    },
+    
+    /**
+     * 配列をソート
+     */
+    sortArray(array, key, ascending = true) {
+      if (!Array.isArray(array)) return [];
+      return [...array].sort((a, b) => {
+        const aVal = a[key];
+        const bVal = b[key];
+        if (aVal < bVal) return ascending ? -1 : 1;
+        if (aVal > bVal) return ascending ? 1 : -1;
+        return 0;
+      });
+    },
+    
+    /**
+     * オブジェクトをクローン
+     */
+    cloneObject(obj) {
+      return JSON.parse(JSON.stringify(obj));
+    },
+    
+    /**
+     * 要素を表示/非表示
+     */
+    toggleElement(elementId, show) {
+      const element = document.getElementById(elementId);
+      if (element) {
+        element.style.display = show ? 'block' : 'none';
+      }
+    },
+    
+    /**
+     * select要素にオプションを追加
+     */
+    populateSelect(selectId, options, valueKey, textKey, placeholder = '選択してください') {
+      const select = document.getElementById(selectId);
+      if (!select) return;
+      select.innerHTML = `<option value="" disabled selected>${placeholder}</option>`;
+      options.forEach(option => {
+        const optionElement = document.createElement('option');
+        optionElement.value = option[valueKey];
+        optionElement.textContent = option[textKey];
+        select.appendChild(optionElement);
+      });
+      M.FormSelect.init(select);
+    },
+    
+    /**
+     * フォームをクリア
+     */
+    clearForm(formId) {
+      const form = document.getElementById(formId);
+      if (form) {
+        form.reset();
+        const selects = form.querySelectorAll('select');
+        selects.forEach(select => {
+          M.FormSelect.init(select);
+        });
+        const labels = form.querySelectorAll('label');
+        labels.forEach(label => {
+          label.classList.remove('active');
+        });
+      }
+    }
+  };
+  
+  // ===========================================================================
+  // ★ NEW: ナビゲーションモジュール ★
+  // ===========================================================================
+  
+  const Navigation = {
+    _navigating: false,
+
+    /**
+     * ★★★ SPA方式: ページ遷移を実行（google.script.runを使用） ★★★
+     */
+    navigateToPage(pageName, meta = { source: 'unknown' }) {
+      console.log('[SPA] navigateToPage called with:', pageName, 'source:', meta.source);
+      console.log('[SPA] Current page:', AppState.currentPage);
+
+      // 二重遷移を防止
+      if (this._navigating) {
+        console.log('[WARN] Navigation already in progress, ignoring');
+        return;
+      }
+
+      // 同一ページの場合はスキップ
+      if (pageName === AppState.currentPage) {
+        console.log('[SPA] Already on page:', pageName);
+        return;
+      }
+
+      this._navigating = true;
+      UI.showLoading('ページを読み込んでいます...');
+
+      // ★★★ SPA方式: google.script.runでサーバーからHTMLを取得 ★★★
+      google.script.run
+        .withSuccessHandler((html) => {
+          console.log('[SPA] Page content loaded successfully for:', pageName);
+
+          // コンテンツを入れ替え
+          const contentDiv = document.getElementById('page-content');
+          if (contentDiv) {
+            contentDiv.innerHTML = html;
+          } else {
+            console.error('[ERROR] page-content div not found!');
+            UI.showError('ページコンテンツの配置に失敗しました');
+            UI.hideLoading();
+            this._navigating = false;
+            return;
+          }
+
+          // ステート更新
+          AppState.currentPage = pageName;
+
+          // ナビゲーションバーのアクティブ状態を更新
+          this.updateActiveNavLinks(pageName);
+
+          // ページ固有の初期化を実行
+          App.initPage().then(() => {
+            UI.hideLoading();
+            this._navigating = false;
+            console.log('[SPA] Navigation completed successfully to:', pageName);
+          }).catch((error) => {
+            console.error('[ERROR] Page initialization failed:', error);
+            UI.hideLoading();
+            UI.showError('ページの初期化に失敗しました: ' + error.message);
+            this._navigating = false;
+          });
+        })
+        .withFailureHandler((error) => {
+          console.error('[ERROR] Failed to load page content:', error);
+          UI.hideLoading();
+          UI.showError('ページの読み込みに失敗しました: ' + error.message);
+          this._navigating = false;
+        })
+        .getPageContent(pageName);
+    },
+
+    /**
+     * ナビゲーションバーのアクティブ状態を更新
+     */
+    updateActiveNavLinks(activePage) {
+      console.log('[SPA] Updating active nav links for:', activePage);
+
+      // 全てのナビリンクからactiveクラスを削除
+      document.querySelectorAll('nav li').forEach(li => {
+        li.classList.remove('active');
+      });
+
+      // アクティブページのリンクにactiveクラスを追加
+      document.querySelectorAll(`nav a[data-page="${activePage}"]`).forEach(link => {
+        const li = link.closest('li');
+        if (li) {
+          li.classList.add('active');
+        }
+      });
+    },
+
+    /**
+     * すべてのナビゲーションリンクにイベントリスナーを設定
+     */
+    setupEventListeners() {
+      console.log('[SPA] Setting up navigation event listeners');
+
+      // 共通のクリックハンドラ（isTrustedガード付き）
+      const onClickNav = (e) => {
+        console.log('[DEBUG] Click event:', {
+          isTrusted: e.isTrusted,
+          target: e.target.tagName,
+          id: e.target.id
+        });
+
+        // ★★★ 重要: ユーザー操作以外（Materialize等の自動クリック）を無視 ★★★
+        if (!e.isTrusted) {
+          console.log('[WARN] Ignoring non-user click (isTrusted=false)');
+          return;
+        }
+
+        e.preventDefault();
+
+        const link = e.currentTarget;
+        const pageName = link.getAttribute('data-page') || 'dispatch-plan';
+
+        console.log('[SPA] User clicked nav link for page:', pageName);
+        this.navigateToPage(pageName, { source: 'user-click' });
+      };
+
+      // ブランドロゴ (ホームに戻る)
+      const brandLogo = document.getElementById('brandLogo');
+      if (brandLogo) {
+        console.log('[DEBUG] Setting up brandLogo click listener');
+        brandLogo.addEventListener('click', onClickNav, { capture: true });
+      }
+
+      // ヘッダーとサイドナビのリンク
+      const navLinks = document.querySelectorAll('a[data-page]');
+      console.log('[DEBUG] Found', navLinks.length, 'navigation links');
+      navLinks.forEach((link, index) => {
+        const pageName = link.getAttribute('data-page');
+        console.log('[DEBUG] Setting up nav link', index, 'for page:', pageName);
+        link.addEventListener('click', onClickNav, { capture: true });
+      });
+
+      console.log('[SPA] Navigation event listeners setup completed');
+    }
+  };
+  
+  // ===========================================================================
+  // メインアプリケーションモジュール
+  // ===========================================================================
+  
+  const App = {
+    /**
+     * アプリケーション初期化
+     */
+    async init() {
+      console.log('App initializing...');
+
+      try {
+        UI.showLoading('アプリケーションを初期化中...');
+
+        // ★★★ 重要: ナビゲーションイベントリスナーを最優先で設定 ★★★
+        // Materialize初期化前に設定することで、自動クリックをキャプチャできる
+        this.setupEventListeners();
+
+        // Materialize コンポーネントの初期化
+        this.initMaterialize();
+
+        // マスタデータの読み込み
+        await this.loadMasterData();
+
+        // ページの初期化
+        await this.initPage();
+
+        UI.hideLoading();
+        console.log('App initialized successfully');
+
+      } catch (error) {
+        console.error('App initialization error:', error);
+        UI.hideLoading();
+        UI.showError('アプリケーションの初期化に失敗しました: ' + error.message);
+      }
+    },
+    
+    /**
+     * Materialize コンポーネントの初期化
+     * ★★★ M.AutoInit()は使わず、必要なコンポーネントのみ手動初期化 ★★★
+     */
+    initMaterialize() {
+      console.log('[DEBUG] Initializing Materialize components manually');
+
+      // Sidenav
+      const sidenavElems = document.querySelectorAll('.sidenav');
+      if (sidenavElems.length > 0) {
+        console.log('[DEBUG] Initializing', sidenavElems.length, 'sidenav elements');
+        M.Sidenav.init(sidenavElems);
+      }
+
+      // Select
+      const selectElems = document.querySelectorAll('select');
+      if (selectElems.length > 0) {
+        console.log('[DEBUG] Initializing', selectElems.length, 'select elements');
+        M.FormSelect.init(selectElems);
+      }
+
+      // Datepicker
+      const datepickerElems = document.querySelectorAll('.datepicker');
+      if (datepickerElems.length > 0) {
+        console.log('[DEBUG] Initializing', datepickerElems.length, 'datepicker elements');
+        M.Datepicker.init(datepickerElems, {
+          format: 'yyyy-mm-dd',
+          autoClose: true,
+          i18n: {
+            cancel: 'キャンセル',
+            done: '選択',
+            months: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+            monthsShort: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+            weekdays: ['日曜日', '月曜日', '火曜日', '水曜日', '木曜日', '金曜日', '土曜日'],
+            weekdaysShort: ['日', '月', '火', '水', '木', '金', '土'],
+            weekdaysAbbrev: ['日', '月', '火', '水', '木', '金', '土']
+          }
+        });
+      }
+
+      // Timepicker
+      const timepickerElems = document.querySelectorAll('.timepicker');
+      if (timepickerElems.length > 0) {
+        console.log('[DEBUG] Initializing', timepickerElems.length, 'timepicker elements');
+        M.Timepicker.init(timepickerElems, {
+          twelveHour: false,
+          i18n: {
+            cancel: 'キャンセル',
+            done: '選択'
+          }
+        });
+      }
+
+      // Modal
+      const modalElems = document.querySelectorAll('.modal');
+      if (modalElems.length > 0) {
+        console.log('[DEBUG] Initializing', modalElems.length, 'modal elements');
+        M.Modal.init(modalElems);
+      }
+
+      // Tabs
+      const tabsElems = document.querySelectorAll('.tabs');
+      if (tabsElems.length > 0) {
+        console.log('[DEBUG] Initializing', tabsElems.length, 'tabs elements');
+        M.Tabs.init(tabsElems);
+      }
+
+      console.log('[DEBUG] Materialize initialization completed');
+    },
+    
+    /**
+     * マスタデータの読み込み
+     */
+    async loadMasterData() {
+      console.log('Loading master data...');
+      
+      try {
+        const [shippers, vehicles, requestTypes] = await Promise.all([
+          API.getAllShippers(),
+          API.getAllVehicles(),
+          API.getUniqueRequestTypes()
+        ]);
+        
+        AppState.shippers = shippers;
+        AppState.vehicles = vehicles;
+        AppState.requestTypes = requestTypes;
+        
+        console.log('Master data loaded:', {
+          shippers: shippers.length,
+          vehicles: vehicles.length,
+          requestTypes: requestTypes.length
+        });
+        
+      } catch (error) {
+        console.error('Failed to load master data:', error);
+        throw new Error('マスタデータの読み込みに失敗しました');
+      }
+    },
+    
+    /**
+     * ページの初期化
+     */
+    async initPage() {
+      const page = AppState.currentPage;
+      console.log('Initializing page:', page);
+      
+      switch (page) {
+        case 'request-form':
+          await RequestForm.init();
+          break;
+        case 'request-list':
+          await RequestList.init();
+          break;
+        case 'dispatch-plan': // ★ 'dashboard' から修正
+          await DispatchPlan.init();
+          break;
+        default:
+          console.warn('Unknown page or no page-specific init required:', page);
+      }
+    },
+    
+    /**
+     * グローバルイベントリスナーの設定
+     */
+    setupEventListeners() {
+      // ★ ここでナビゲーションを初期化
+      Navigation.setupEventListeners();
+      
+      // ★ 他のグローバルリスナー（もしあれば）
+    }
+  };
+  
+  // ===========================================================================
+  // ページ別モジュール
+  // ===========================================================================
+  
+  // 依頼入力画面モジュール
+  const RequestForm = {
+    // ... (init, populateFormData, setupEventListeners, handleSubmit, getFormData, validateFormData, handleReset は既存のコードと同一) ...
+    async init() {
+      console.log('RequestForm init');
+      this.populateFormData();
+      this.setupEventListeners();
+    },
+    
+    populateFormData() {
+      Utils.populateSelect('shipper', AppState.shippers, 'shipperId', 'shipperName');
+      Utils.populateSelect('requestType', AppState.requestTypes.map(type => ({
+        value: type,
+        label: type
+      })), 'value', 'label');
+      
+      const receivedDateInput = document.getElementById('receivedDate');
+      if (receivedDateInput) {
+        receivedDateInput.value = Utils.getToday();
+        M.Datepicker.init(receivedDateInput); // M.AutoInit() の代わりに手動で初期化
+      }
+    },
+    
+    setupEventListeners() {
+      const form = document.getElementById('requestForm');
+      if (form) {
+        form.addEventListener('submit', (e) => this.handleSubmit(e));
+      }
+      
+      const resetBtn = document.getElementById('resetBtn');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', () => this.handleReset());
+      }
+    },
+    
+    async handleSubmit(e) {
+      e.preventDefault();
+      try {
+        UI.showLoading('依頼を登録中...');
+        const formData = this.getFormData();
+        const errors = this.validateFormData(formData);
+        
+        if (errors.length > 0) {
+          UI.hideLoading();
+          UI.showError(errors.join('\n'));
+          return;
+        }
+        
+        const result = await API.createRequest(formData);
+        UI.hideLoading();
+        
+        if (result.success) {
+          UI.showSuccess('依頼を登録しました (ID: ' + result.requestId + ')');
+          this.handleReset();
+        } else {
+          UI.showError('依頼の登録に失敗しました: ' + result.message);
+        }
+      } catch (error) {
+        console.error('Submit error:', error);
+        UI.hideLoading();
+        UI.showError('依頼の登録に失敗しました: ' + error.message);
+      }
+    },
+    
+    getFormData() {
+      return {
+        receivedDate: document.getElementById('receivedDate').value,
+        shipper: document.getElementById('shipper').value,
+        loadDate: document.getElementById('loadDate').value,
+        loadTime: document.getElementById('loadTime').value,
+        loadPlace1: document.getElementById('loadPlace1').value,
+        loadPlace2: document.getElementById('loadPlace2').value,
+        productName: document.getElementById('productName').value,
+        unloadDate: document.getElementById('unloadDate').value,
+        unloadTime: document.getElementById('unloadTime').value,
+        unloadPlace1: document.getElementById('unloadPlace1').value,
+        unloadPlace2: document.getElementById('unloadPlace2').value,
+        requestType: document.getElementById('requestType').value
+      };
+    },
+    
+    validateFormData(formData) {
+      const errors = [];
+      if (!formData.shipper) errors.push('荷主を選択してください');
+      if (!formData.loadDate) errors.push('積込日を入力してください');
+      if (!formData.loadPlace1) errors.push('積込地1を入力してください');
+      if (!formData.productName) errors.push('品名を入力してください');
+      if (!formData.unloadDate) errors.push('荷卸日を入力してください');
+      if (!formData.unloadPlace1) errors.push('荷卸地1を入力してください');
+      if (!formData.requestType) errors.push('依頼車種を選択してください');
+      
+      if (formData.loadDate && formData.unloadDate) {
+        const error = Validator.dateRange(
+          formData.loadDate,
+          formData.unloadDate,
+          '積込日',
+          '荷卸日'
+        );
+        if (error) errors.push(error);
+      }
+      return errors;
+    },
+    
+    handleReset() {
+      if (UI.confirm('入力内容をクリアしますか?')) {
+        Utils.clearForm('requestForm');
+        const receivedDateInput = document.getElementById('receivedDate');
+        if (receivedDateInput) {
+          receivedDateInput.value = Utils.getToday();
+          M.Datepicker.init(receivedDateInput); // 再初期化
+        }
+      }
+    }
+  };
+  
+  // 依頼一覧モジュール
+  const RequestList = {
+    // ... (init, loadRequests, renderTable は既存のコードと同一) ...
+    // ★ setupEventListeners にロジックを追加
+    
+    async init() {
+      console.log('RequestList init');
+      this.setupEventListeners(); // ★ データをロードする前にリスナーを設定
+      this.populateFilters(); // ★ フィルタードロップダウンを設定
+      await this.loadRequests();
+    },
+
+    // ★ NEW: フィルタードロップダウンを設定
+    populateFilters() {
+      Utils.populateSelect('filterShipper', AppState.shippers, 'shipperId', 'shipperName', 'すべての荷主');
+    },
+    
+    async loadRequests() {
+      try {
+        UI.showLoading('依頼データを読み込み中...');
+        const requests = await API.getAllRequests();
+        AppState.requests = requests;
+        this.renderTable(requests);
+        this.updateRequestCount(requests.length); // ★ 件数を更新
+        UI.hideLoading();
+      } catch (error) {
+        console.error('Load requests error:', error);
+        UI.hideLoading();
+        UI.showError('依頼データの読み込みに失敗しました');
+      }
+    },
+    
+    renderTable(requests) {
+      const tbody = document.getElementById('requestTableBody');
+      if (!tbody) return;
+      
+      if (requests.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center">データがありません</td></tr>';
+        return;
+      }
+      
+      tbody.innerHTML = requests.map(req => `
+        <tr>
+          <td>${req.requestId}</td>
+          <td>${Utils.formatDateJP(req.loadDate)}</td>
+          <td>${req.shipper}</td>
+          <td>${req.loadPlace1}</td>
+          <td>${req.productName}</td>
+          <td>${req.requestType}</td>
+          <td>${req.vehicleNumber || '-'}</td>
+          <td>${req.driverName || '-'}</td>
+          <td>
+            ${req.vehicleNumber 
+              ? '<span class="chip chip-assigned">配車済</span>' 
+              : '<span class="chip chip-unassigned">未配車</span>'}
+          </td>
+        </tr>
+      `).join('');
+    },
+    
+    setupEventListeners() {
+      // ★ フィルターボタンのイベントリスナー
+      const applyBtn = document.getElementById('applyFilterBtn');
+      if (applyBtn) {
+        applyBtn.addEventListener('click', () => this.applyFilters());
+      }
+      
+      const resetBtn = document.getElementById('resetFilterBtn');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', () => this.resetFilters());
+      }
+    },
+
+    // ★ フィルター適用関数 (request-list.html から移動)
+    applyFilters() {
+      if (!AppState.requests) return;
+      
+      const startDate = document.getElementById('filterStartDate').value;
+      const endDate = document.getElementById('filterEndDate').value;
+      const shipper = document.getElementById('filterShipper').value;
+      const status = document.getElementById('filterStatus').value;
+      
+      let filtered = AppState.requests;
+      
+      if (startDate) {
+        filtered = filtered.filter(req => req.loadDate >= startDate);
+      }
+      if (endDate) {
+        filtered = filtered.filter(req => req.loadDate <= endDate);
+      }
+      if (shipper) {
+        // ★ 修正: shipperId で比較
+        filtered = filtered.filter(req => req.shipperId === shipper);
+      }
+      if (status === 'assigned') {
+        filtered = filtered.filter(req => req.vehicleNumber);
+      } else if (status === 'unassigned') {
+        filtered = filtered.filter(req => !req.vehicleNumber);
+      }
+      
+      this.renderTable(filtered);
+      this.updateRequestCount(filtered.length);
+    },
+    
+    // ★ フィルターリセット関数 (request-list.html から移動)
+    resetFilters() {
+      document.getElementById('filterStartDate').value = '';
+      document.getElementById('filterEndDate').value = '';
+      document.getElementById('filterShipper').value = '';
+      document.getElementById('filterStatus').value = '';
+      
+      const selects = document.querySelectorAll('select');
+      M.FormSelect.init(selects);
+      
+      this.renderTable(AppState.requests);
+      this.updateRequestCount(AppState.requests.length);
+    },
+
+    // ★ 件数表示更新関数 (request-list.html から移動)
+    updateRequestCount(count) {
+      const countElem = document.getElementById('requestCount');
+      if (countElem) {
+        countElem.textContent = `全 ${count} 件`;
+      }
+    }
+  };
+  
+  // 配車計画モジュール
+  const DispatchPlan = {
+    // ... (init, loadRequests, renderRequests は既存のコードと同一) ...
+    // ★ setupEventListeners にロジックを追加
+    
+    async init() {
+      console.log('DispatchPlan init');
+      this.setupEventListeners(); // ★ データをロードする前にリスナーを設定
+      this.populateFilters(); // ★ フィルタードロップダウンを設定
+      await this.loadRequests();
+    },
+
+    // ★ NEW: フィルタードロップダウンを設定
+    populateFilters() {
+      Utils.populateSelect('planFilterShipper', AppState.shippers, 'shipperId', 'shipperName', 'すべての荷主');
+      Utils.populateSelect('planFilterType', AppState.requestTypes.map(type => ({
+        value: type,
+        label: type
+      })), 'value', 'label', 'すべての車種');
+    },
+    
+    async loadRequests() {
+      try {
+        UI.showLoading('依頼データを読み込み中...');
+        const requests = await API.getAllRequests();
+        AppState.requests = requests;
+        // ★ デフォルトでは未配車のみ表示
+        this.applyPlanFilters();
+        UI.hideLoading();
+      } catch (error) {
+        console.error('Load requests error:', error);
+        UI.hideLoading();
+        UI.showError('依頼データの読み込みに失敗しました');
+      }
+    },
+    
+    renderRequests(requests) {
+      const container = document.getElementById('unassignedRequests');
+      if (!container) return;
+
+      const countElem = document.getElementById('unassignedCount');
+      if (countElem) {
+        countElem.textContent = `(${requests.length} 件)`;
+      }
+      
+      if (requests.length === 0) {
+        container.innerHTML = '<p class="text-center text-secondary">対象の依頼はありません</p>';
+        return;
+      }
+      
+      container.innerHTML = requests.map(req => `
+        <div class="request-card" data-request-id="${req.requestId}">
+          <div class="request-card-header">
+            <span class="request-id">${req.requestId}</span>
+            <span class="chip chip-info">${req.requestType}</span>
+          </div>
+          <div class="request-info">
+            <strong>${req.shipper}</strong> - ${req.productName}
+          </div>
+          <div class="request-info">
+            積込: ${Utils.formatDateJP(req.loadDate)} ${req.loadTime || ''} - ${req.loadPlace1}
+          </div>
+          <div class="request-info">
+            荷卸: ${Utils.formatDateJP(req.unloadDate)} ${req.unloadTime || ''} - ${req.unloadPlace1}
+          </div>
+        </div>
+      `).join('');
+    },
+    
+    setupEventListeners() {
+      // ★ dispatch-plan.html からロジックを移動
+      const applyBtn = document.getElementById('planApplyFilterBtn');
+      if (applyBtn) {
+        applyBtn.addEventListener('click', () => this.applyPlanFilters());
+      }
+      
+      const resetBtn = document.getElementById('planResetFilterBtn');
+      if (resetBtn) {
+        resetBtn.addEventListener('click', () => this.resetPlanFilters());
+      }
+      
+      const cancelBtn = document.getElementById('cancelVehicleSelectBtn');
+      if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => this.cancelVehicleSelection());
+      }
+      
+      const unassignedContainer = document.getElementById('unassignedRequests');
+      if (unassignedContainer) {
+        unassignedContainer.addEventListener('click', (e) => {
+          const card = e.target.closest('.request-card');
+          if (card) {
+            const requestId = card.dataset.requestId;
+            this.selectRequestForDispatch(requestId);
+          }
+        });
+      }
+    },
+    
+    // ★ 以下、dispatch-plan.html から移動した関数
+    
+    applyPlanFilters() {
+      if (!AppState.requests) return;
+      
+      const date = document.getElementById('planFilterDate').value;
+      const shipper = document.getElementById('planFilterShipper').value;
+      const type = document.getElementById('planFilterType').value;
+      const unassignedOnly = document.getElementById('planFilterUnassigned').checked;
+      
+      let filtered = AppState.requests;
+      
+      if (unassignedOnly) {
+        filtered = filtered.filter(req => !req.vehicleNumber);
+      }
+      if (date) {
+        filtered = filtered.filter(req => req.loadDate === date);
+      }
+      if (shipper) {
+        // ★ 修正: shipperId で比較
+        filtered = filtered.filter(req => req.shipperId === shipper);
+      }
+      if (type) {
+        filtered = filtered.filter(req => req.requestType === type);
+      }
+      
+      this.renderRequests(filtered);
+    },
+    
+    resetPlanFilters() {
+      document.getElementById('planFilterDate').value = '';
+      document.getElementById('planFilterShipper').value = '';
+      document.getElementById('planFilterType').value = '';
+      document.getElementById('planFilterUnassigned').checked = true;
+      
+      const selects = document.querySelectorAll('select');
+      M.FormSelect.init(selects);
+      
+      const unassigned = AppState.requests.filter(req => !req.vehicleNumber);
+      this.renderRequests(unassigned);
+    },
+    
+    async selectRequestForDispatch(requestId) {
+      try {
+        const request = AppState.requests.find(r => r.requestId === requestId);
+        if (!request) return;
+        
+        AppState.selectedRequest = request;
+        
+        const cards = document.querySelectorAll('.request-card');
+        cards.forEach(card => {
+          card.classList.toggle('selected', card.dataset.requestId === requestId);
+        });
+        
+        this.showVehicleSelector(request);
+        
+        UI.showLoading('利用可能な車両を検索中...');
+        const vehicles = await API.getAvailableVehicles(request);
+        UI.hideLoading();
+        
+        this.renderAvailableVehicles(vehicles, request);
+        
+      } catch (error) {
+        console.error('Select request error:', error);
+        UI.hideLoading();
+        UI.showError('車両の検索に失敗しました: ' + error.message);
+      }
+    },
+    
+    showVehicleSelector(request) {
+      Utils.toggleElement('vehicleSelectorCard', true);
+      Utils.toggleElement('helpCard', false);
+      
+      const infoDiv = document.getElementById('selectedRequestInfo');
+      if (infoDiv) {
+        infoDiv.innerHTML = `
+          <div style="background-color: #E3F2FD; padding: 15px; border-radius: 5px;">
+            <h6 style="margin: 0 0 10px 0; color: #1976D2;">
+              <strong>${request.requestId}</strong>
+            </h6>
+            <p style="margin: 5px 0;"><strong>荷主:</strong> ${request.shipper}</p>
+            <p style="margin: 5px 0;"><strong>品名:</strong> ${request.productName}</p>
+            <p style="margin: 5px 0;"><strong>積込:</strong> ${Utils.formatDateJP(request.loadDate)} ${request.loadTime || ''}</p>
+            <p style="margin: 5px 0;"><strong>荷卸:</strong> ${Utils.formatDateJP(request.unloadDate)} ${request.unloadTime || ''}</p>
+            <p style="margin: 5px 0;"><strong>依頼車種:</strong> <span class="chip chip-info">${request.requestType}</span></p>
+          </div>
+        `;
+      }
+    },
+    
+    renderAvailableVehicles(vehicles, request) {
+      const container = document.getElementById('availableVehicles');
+      if (!container) return;
+      
+      if (vehicles.length === 0) {
+        container.innerHTML = '<p class="text-center text-secondary">この依頼に割り当て可能な車両がありません</p>';
+        return;
+      }
+      
+      container.innerHTML = vehicles.map(vehicle => `
+        <div class="vehicle-item" data-vehicle-number="${vehicle.number}">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <strong>${vehicle.number}</strong>
+              <span class="chip chip-info" style="margin-left: 10px;">${vehicle.vehicleType}</span>
+            </div>
+            <button class="btn-small waves-effect waves-light blue darken-1 assign-vehicle-btn" 
+                    data-vehicle-number="${vehicle.number}"
+                    data-request-id="${request.requestId}">
+              <i class="material-icons left">check</i>
+              割り当て
+            </button>
+          </div>
+          <div style="margin-top: 5px; font-size: 0.875rem; color: #757575;">
+            <div>車番: ${vehicle.radioNumber || '-'}</div>
+            <div>運転手: ${vehicle.driverName || '-'}</div>
+            <div>積載量: ${vehicle.capacity || '-'}</div>
+          </div>
+        </div>
+      `).join('');
+      
+      const assignBtns = container.querySelectorAll('.assign-vehicle-btn');
+      assignBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const vehicleNumber = btn.dataset.vehicleNumber;
+          const requestId = btn.dataset.requestId;
+          this.assignVehicleToRequest(requestId, vehicleNumber);
+        });
+      });
+    },
+    
+    async assignVehicleToRequest(requestId, vehicleNumber) {
+      if (!UI.confirm('この車両を割り当てますか?')) {
+        return;
+      }
+      
+      try {
+        UI.showLoading('車両を割り当て中...');
+        const result = await API.assignVehicle(requestId, vehicleNumber);
+        UI.hideLoading();
+        
+        if (result.success) {
+          UI.showSuccess('車両を割り当てました');
+          await this.loadRequests(); // データを再読み込み
+          this.cancelVehicleSelection(); // パネルを閉じる
+        } else {
+          UI.showError('車両の割り当てに失敗しました: ' + result.message);
+        }
+      } catch (error) {
+        console.error('Assign vehicle error:', error);
+        UI.hideLoading();
+        UI.showError('車両の割り当てに失敗しました: ' + error.message);
+      }
+    },
+    
+    cancelVehicleSelection() {
+      Utils.toggleElement('vehicleSelectorCard', false);
+      Utils.toggleElement('helpCard', true);
+      
+      const cards = document.querySelectorAll('.request-card');
+      cards.forEach(card => card.classList.remove('selected'));
+      
+      AppState.selectedRequest = null;
+    }
+  };
+  
+  // ===========================================================================
+  // グローバルに公開
+  // ===========================================================================
+  
+  window.App = App;
+  window.AppState = AppState;
+  window.API = API;
+  window.UI = UI;
+  window.Utils = Utils;
+  window.RequestForm = RequestForm;
+  window.RequestList = RequestList;
+  window.DispatchPlan = DispatchPlan;
+  
+  // ===========================================================================
+  // DOMContentLoaded イベント (★ 唯一の実行開始点)
+  // ===========================================================================
+  
+  document.addEventListener('DOMContentLoaded', () => {
+    console.log('DOMContentLoaded: App initializing...');
+    console.log('[DEBUG] Current page from APP_CONFIG:', window.APP_CONFIG.currentPage);
+    console.log('[DEBUG] Current URL:', window.location.href);
+
+    // Emergency cleanup: Remove any orphaned loading overlays from previous navigation
+    document.querySelectorAll('.loading-overlay').forEach(el => {
+      console.warn('[EMERGENCY CLEANUP] Removing orphaned loading overlay from previous page');
+      el.remove();
+    });
+
+    // ★★★ SPA方式: 初期ページのナビゲーションバーをアクティブ化 ★★★
+    const initialPage = window.APP_CONFIG.currentPage;
+    console.log('[SPA] Setting initial active page:', initialPage);
+    document.querySelectorAll(`nav a[data-page="${initialPage}"]`).forEach(link => {
+      const li = link.closest('li');
+      if (li) {
+        li.classList.add('active');
+      }
+    });
+
+    App.init();
+  });
+  
+})();
+</script>
+
