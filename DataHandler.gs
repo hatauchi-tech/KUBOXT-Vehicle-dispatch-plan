@@ -705,6 +705,52 @@ function getShipperById(shipperId) {
 // =============================================================================
 
 /**
+ * ★★★ NEW: すべてのユニークな住所を取得（オートコンプリート用）
+ * @returns {Array<string>} ユニークな住所の配列
+ */
+function getUniqueAddresses() {
+  try {
+    logMessage('INFO', 'getUniqueAddresses: ユニークな住所の取得開始');
+    
+    const data = getSheetData(SHEET_NAMES.REQUESTS);
+    
+    if (data.length <= 1) {
+      return [];
+    }
+    
+    const addressSet = new Set();
+    
+    // ヘッダー行を除いてループ
+    data.slice(1).forEach(row => {
+      // 積込地1, 積込地2, 荷卸地1, 荷卸地2 の列から値を取得
+      const addresses = [
+        row[REQUEST_COLUMNS.LOAD_PLACE1],
+        row[REQUEST_COLUMNS.LOAD_PLACE2],
+        row[REQUEST_COLUMNS.UNLOAD_PLACE1],
+        row[REQUEST_COLUMNS.UNLOAD_PLACE2]
+      ];
+      
+      addresses.forEach(address => {
+        // 空でない値のみをSetに追加
+        if (isNotEmpty(address)) {
+          addressSet.add(address.trim());
+        }
+      });
+    });
+    
+    // Setを配列に変換してソート
+    const uniqueAddresses = Array.from(addressSet).sort();
+    
+    logMessage('INFO', `getUniqueAddresses: ${uniqueAddresses.length}件のユニークな住所を取得`);
+    return uniqueAddresses;
+    
+  } catch (error) {
+    logMessage('ERROR', 'getUniqueAddresses: ' + error.toString());
+    return [];
+  }
+}
+
+/**
  * M_車両の対応可能依頼からユニークな車種リストを取得
  * @returns {Array<string>} ユニークな車種の配列
  */

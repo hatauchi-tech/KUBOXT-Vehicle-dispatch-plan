@@ -220,6 +220,28 @@ function apiGetUniqueRequestTypes() {
   }
 }
 
+/**
+ * ★★★ NEW: ユニークな住所リストを取得（API）
+ * @returns {Object} { success: boolean, data: Array, message: string }
+ */
+function apiGetUniqueAddresses() {
+  try {
+    const addresses = getUniqueAddresses();
+    return {
+      success: true,
+      data: addresses,
+      message: ''
+    };
+  } catch (error) {
+    logMessage('ERROR', 'apiGetUniqueAddresses: ' + error.toString());
+    return {
+      success: false,
+      data: [],
+      message: error.message
+    };
+  }
+}
+
 // =============================================================================
 // クライアントAPIエンドポイント - 依頼データ操作
 // =============================================================================

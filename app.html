@@ -1,7 +1,7 @@
 <script>
 /**
  * =============================================================================
- * app.js - クライアントサイドメインロジック (v3.2 - 当日計画タブ機能・デバッグログ追加)
+ * app.js - クライアントサイドメインロジック (v3.3 - オートコンプリート機能追加)
  * =============================================================================
  */
 
@@ -32,6 +32,7 @@
     shippers: [],
     vehicles: [],
     requestTypes: [],
+    addresses: [], // ★ NEW: オートコンプリート用の住所リスト
     requests: [],
     selectedRequest: null,
     loading: false,
@@ -77,6 +78,10 @@
     },
     async getUniqueRequestTypes() {
       const result = await this.call('apiGetUniqueRequestTypes');
+      return result.data || [];
+    },
+    async getUniqueAddresses() { // ★ NEW: 住所リスト取得API
+      const result = await this.call('apiGetUniqueAddresses');
       return result.data || [];
     },
     async getRequestById(requestId) {
@@ -492,19 +497,62 @@
       if (modalElems.length > 0) M.Modal.init(modalElems);
       const tabsElems = document.querySelectorAll('.tabs');
       if (tabsElems.length > 0) M.Tabs.init(tabsElems);
+
+      // ★ NEW: オートコンプリートの初期化
+      this.initAutocomplete();
+
       M.updateTextFields();
     },
+    
+    /**
+     * ★ NEW: 住所オートコンプリートの初期化
+     */
+    initAutocomplete() {
+      const addressInputs = document.querySelectorAll(
+        '#loadPlace1, #loadPlace2, #unloadPlace1, #unloadPlace2'
+      );
+      
+      if (addressInputs.length === 0 || AppState.addresses.length === 0) {
+        return;
+      }
+      
+      console.log(`[App.initAutocomplete] Initializing ${addressInputs.length} inputs with ${AppState.addresses.length} addresses`); // ★ DEBUG LOG
+
+      // MaterializeのAutocompleteはデータを { "key": "value" } 形式で要求する
+      const autocompleteData = AppState.addresses.reduce((acc, address) => {
+        acc[address] = null; // null（画像なし）
+        return acc;
+      }, {});
+
+      const options = {
+        data: autocompleteData,
+        limit: 5, // 候補の最大表示数
+        minLength: 1, // 1文字からサジェスト開始
+        onAutocomplete: function(val) {
+          // 選択時にテキストフィールドを更新（M.updateTextFieldsは不要）
+          const instance = M.Autocomplete.getInstance(this.el);
+          instance.el.value = val;
+        }
+      };
+
+      addressInputs.forEach(input => {
+        M.Autocomplete.init(input, options);
+      });
+    },
+
     async loadMasterData() {
       console.log('[App.loadMasterData] Loading master data...'); // ★ DEBUG LOG
       try {
-        const [shippers, vehicles, requestTypes] = await Promise.all([
+        const [shippers, vehicles, requestTypes, addresses] = await Promise.all([ // ★ MOD: addresses を追加
           API.getAllShippers(),
           API.getAllVehicles(),
-          API.getUniqueRequestTypes()
+          API.getUniqueRequestTypes(),
+          API.getUniqueAddresses() // ★ NEW: 住所リストを取得
         ]);
         AppState.shippers = shippers;
         AppState.vehicles = vehicles;
         AppState.requestTypes = requestTypes;
+        AppState.addresses = addresses; // ★ NEW: AppState に保存
         console.log('[App.loadMasterData] Master data loaded successfully'); // ★ DEBUG LOG
       } catch (error) {
         console.error('[App.loadMasterData] Failed to load master data:', error); // ★ DEBUG LOG
@@ -551,6 +599,7 @@
       this.setupEventListeners();
       this.setupFormUI();
       await this.populateFormData();
+      App.initAutocomplete(); // ★ NEW: ページ遷移時にもAutocompleteを再初期化
     },
     setupFormUI() {
       console.log(`[RequestForm.setupFormUI] Mode: ${AppState.currentFormMode}`); // ★ DEBUG LOG
