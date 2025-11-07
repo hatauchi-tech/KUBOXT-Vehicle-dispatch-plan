@@ -242,6 +242,29 @@ function apiGetUniqueAddresses() {
   }
 }
 
+/**
+ * ★★★ NEW: 荷主のお気に入り情報を取得（API）
+ * @param {string} shipperId - 荷主ID
+ * @returns {Object} { success: boolean, data: Object, message: string }
+ */
+function apiGetShipperFavorites(shipperId) {
+  try {
+    const favorites = getShipperFavorites(shipperId);
+    return {
+      success: true,
+      data: favorites,
+      message: ''
+    };
+  } catch (error) {
+    logMessage('ERROR', 'apiGetShipperFavorites: ' + error.toString());
+    return {
+      success: false,
+      data: {},
+      message: error.message
+    };
+  }
+}
+
 // =============================================================================
 // クライアントAPIエンドポイント - 依頼データ操作
 // =============================================================================

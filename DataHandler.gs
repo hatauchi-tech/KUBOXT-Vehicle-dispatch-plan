@@ -701,45 +701,113 @@ function getShipperById(shipperId) {
 }
 
 // =============================================================================
-// ユニークな値の取得（フィルタリング用）
+// ユニークな値の取得（フィルタリング・入力支援用）
 // =============================================================================
 
 /**
- * ★★★ NEW: すべてのユニークな住所を取得（オートコンプリート用）
+ * ★★★ NEW: 荷主ごとのお気に入り（最頻値）を取得
+ * @param {string} shipperId - 荷主ID
+ * @returns {Object} { loadPlace1: string, unloadPlace1: string, productName: string, requestType: string }
+ */
+function getShipperFavorites(shipperId) {
+  try {
+    logMessage('INFO', `getShipperFavorites: 取得開始 (荷主ID: ${shipperId})`);
+    
+    // M_荷主マスタから荷主名を取得（T_荷主依頼データは荷主名で入っているため）
+    const shipper = getShipperById(shipperId);
+    if (!shipper) {
+      logMessage('WARN', `getShipperFavorites: 荷主が見つかりません (ID: ${shipperId})`);
+      return {};
+    }
+    const shipperName = shipper.shipperName;
+
+    // 全依頼データを取得
+    const allRequests = getAllRequests();
+    
+    // この荷主の依頼のみにフィルタリング
+    const shipperRequests = allRequests.filter(req => req.shipper === shipperName);
+    
+    if (shipperRequests.length === 0) {
+      logMessage('INFO', `getShipperFavorites: 過去の依頼データがありません (荷主: ${shipperName})`);
+      return {};
+    }
+
+    // 各項目の最頻値を計算するヘルパー関数
+    const findMostFrequent = (array) => {
+      if (array.length === 0) return '';
+      const counts = {};
+      let maxCount = 0;
+      let mostFrequent = '';
+      
+      array.forEach(item => {
+        if (!item) return; // 空のデータは無視
+        counts[item] = (counts[item] || 0) + 1;
+        if (counts[item] > maxCount) {
+          maxCount = counts[item];
+          mostFrequent = item;
+        }
+      });
+      return mostFrequent;
+    };
+
+    // 各項目のリストを作成
+    const loadPlaces = shipperRequests.map(req => req.loadPlace1);
+    const unloadPlaces = shipperRequests.map(req => req.unloadPlace1);
+    const productNames = shipperRequests.map(req => req.productName);
+    const requestTypes = shipperRequests.map(req => req.requestType);
+
+    // 最頻値を計算
+    const favorites = {
+      loadPlace1: findMostFrequent(loadPlaces),
+      unloadPlace1: findMostFrequent(unloadPlaces),
+      productName: findMostFrequent(productNames),
+      requestType: findMostFrequent(requestTypes)
+    };
+    
+    logMessage('INFO', `getShipperFavorites: お気に入り情報を取得 (荷主: ${shipperName})`);
+    logData('Favorites', favorites);
+
+    return favorites;
+
+  } catch (error) {
+    logMessage('ERROR', 'getShipperFavorites: ' + error.toString());
+    return {};
+  }
+}
+
+/**
+ * ★★★ NEW: T_荷主依頼データからユニークな住所リストを取得
  * @returns {Array<string>} ユニークな住所の配列
  */
 function getUniqueAddresses() {
   try {
-    logMessage('INFO', 'getUniqueAddresses: ユニークな住所の取得開始');
+    logMessage('INFO', 'getUniqueAddresses: ユニークな住所リスト取得開始');
     
     const data = getSheetData(SHEET_NAMES.REQUESTS);
-    
     if (data.length <= 1) {
       return [];
     }
     
-    const addressSet = new Set();
+    const addresses = new Set();
     
     // ヘッダー行を除いてループ
     data.slice(1).forEach(row => {
-      // 積込地1, 積込地2, 荷卸地1, 荷卸地2 の列から値を取得
-      const addresses = [
-        row[REQUEST_COLUMNS.LOAD_PLACE1],
-        row[REQUEST_COLUMNS.LOAD_PLACE2],
-        row[REQUEST_COLUMNS.UNLOAD_PLACE1],
-        row[REQUEST_COLUMNS.UNLOAD_PLACE2]
-      ];
-      
-      addresses.forEach(address => {
-        // 空でない値のみをSetに追加
-        if (isNotEmpty(address)) {
-          addressSet.add(address.trim());
-        }
-      });
+      // 積込地1, 積込地2, 荷卸地1, 荷卸地2
+      if (isNotEmpty(row[REQUEST_COLUMNS.LOAD_PLACE1])) {
+        addresses.add(row[REQUEST_COLUMNS.LOAD_PLACE1]);
+      }
+      if (isNotEmpty(row[REQUEST_COLUMNS.LOAD_PLACE2])) {
+        addresses.add(row[REQUEST_COLUMNS.LOAD_PLACE2]);
+      }
+      if (isNotEmpty(row[REQUEST_COLUMNS.UNLOAD_PLACE1])) {
+        addresses.add(row[REQUEST_COLUMNS.UNLOAD_PLACE1]);
+      }
+      if (isNotEmpty(row[REQUEST_COLUMNS.UNLOAD_PLACE2])) {
+        addresses.add(row[REQUEST_COLUMNS.UNLOAD_PLACE2]);
+      }
     });
     
-    // Setを配列に変換してソート
-    const uniqueAddresses = Array.from(addressSet).sort();
+    const uniqueAddresses = [...addresses].sort();
     
     logMessage('INFO', `getUniqueAddresses: ${uniqueAddresses.length}件のユニークな住所を取得`);
     return uniqueAddresses;

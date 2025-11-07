@@ -92,11 +92,13 @@
         <label>車種</label>
       </div>
 
+      <!-- ★ 修正: 問題点2の修正 (案A: プルダウンに変更) -->
       <div class="input-field">
-        <label>
-          <input type="checkbox" id="planFilterUnassigned" checked />
-          <span>未配車のみ表示</span>
-        </label>
+        <select id="planFilterStatus">
+          <option value="unassigned" selected>未配車のみ</option>
+          <option value="all">すべて表示</option>
+        </select>
+        <label>ステータス</label>
       </div>
 
       <button id="planApplyFilterBtn" class="btn waves-effect waves-light blue darken-1">

@@ -35,6 +35,23 @@
           </div>
         </div>
 
+        <!-- ★★★ NEW: 荷主のお気に入り入力ボックス ★★★ -->
+        <div class="row" id="shipperFavoritesBox" style="display: none;">
+          <div class="col s12">
+            <div class="card-panel blue lighten-5" style="padding: 15px; margin-top: 0;">
+              <h6 style="font-size: 1.1rem; color: #1976D2; margin-top: 0; margin-bottom: 10px;">
+                <i class="material-icons left" style="font-size: 1.3rem;">history</i>
+                よく使う設定
+              </h6>
+              <!-- お気に入り情報がここにJavaScriptで挿入されます -->
+              <div id="shipperFavoritesContent">
+                <p class="text-secondary" style="margin: 0;">荷主を選択すると、よく使う設定がここに表示されます。</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- ★★★ NEW: ここまで ★★★ -->
+
         <div class="row">
           <div class="input-field col s12">
             <input type="text" id="productName" name="productName" required>

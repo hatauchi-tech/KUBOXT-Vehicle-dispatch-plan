@@ -1184,13 +1184,17 @@
       const date = document.getElementById('planFilterDate').value;
       const shipperId = document.getElementById('planFilterShipper').value;
       const type = document.getElementById('planFilterType').value;
-      const unassignedOnly = document.getElementById('planFilterUnassigned').checked;
+      // ★ 修正: 問題点2の修正 (案A: プルダウンから値を取得)
+      const status = document.getElementById('planFilterStatus').value;
       
       let filtered = AppState.requests;
       
-      if (unassignedOnly) {
+      // ★ 修正: 問題点2の修正 (案A: フィルターロジック変更)
+      if (status === 'unassigned') {
         filtered = filtered.filter(req => !req.vehicleNumber);
       }
+      // 'all' の場合は何もしない
+      
       if (date) {
         filtered = filtered.filter(req => req.loadDate === date);
       }
@@ -1208,11 +1212,12 @@
       document.getElementById('planFilterDate').value = '';
       document.getElementById('planFilterShipper').value = '';
       document.getElementById('planFilterType').value = '';
-      document.getElementById('planFilterUnassigned').checked = true;
+      // ★ 修正: 問題点2の修正 (案A: プルダウンをリセット)
+      document.getElementById('planFilterStatus').value = 'unassigned';
       M.FormSelect.init(document.querySelectorAll('select'));
       
-      const unassigned = AppState.requests.filter(req => !req.vehicleNumber);
-      this.renderRequests(unassigned);
+      // ★ 修正: フィルターロジックを applyPlanFilters に任せる
+      this.applyPlanFilters();
     },
     
     async selectRequestForDispatch(requestId) {
@@ -1252,7 +1257,7 @@
             </h6>
             <p style="margin: 5px 0;"><strong>荷主:</strong> ${request.shipper}</p>
             <p style="margin: 5px 0;"><strong>品名:</strong> ${request.productName}</p>
-            <p style="margin: 5px 0;"><strong>積込:</strong> ${Utils.formatDateJP(request.loadDate)} ${Utils.formatTime(request.loadTime) || ''}</p>
+            <p style="margin: 5px 0;"><strong>積込:</strong> ${Utils.formatDateJP(request.loadDate)} ${Utils.formatTime(req.loadTime) || ''}</p>
             <p style="margin: 5px 0;"><strong>荷卸:</strong> ${Utils.formatDateJP(request.unloadDate)} ${Utils.formatTime(request.unloadTime) || ''}</p>
             <p style="margin: 5px 0;"><strong>依頼車種:</strong> <span class="chip chip-info">${request.requestType}</span></p>
           </div>
