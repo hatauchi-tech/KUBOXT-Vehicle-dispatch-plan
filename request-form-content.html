@@ -1,17 +1,17 @@
 <!-- 依頼入力/編集画面 (SCR-01) - コンテンツ部分のみ -->
 <div class="page-header">
-  <h1 class="page-title" id="pageTitle"> <!-- ★ MOD: ID "pageTitle" を追加 -->
+  <h1 class="page-title" id="pageTitle">
     <i class="material-icons large" style="vertical-align: middle;">add_circle</i>
     依頼登録
   </h1>
-  <p class="page-subtitle" id="pageSubtitle">新規配送依頼を登録します</p> <!-- ★ MOD: ID "pageSubtitle" を追加 -->
+  <p class="page-subtitle" id="pageSubtitle">新規配送依頼を登録します</p>
 </div>
 
 <div class="card">
   <div class="card-content">
     <form id="requestForm" class="request-form">
-      
-      <!-- ★ NEW: 編集モード用の隠しフィールド -->
+
+      <!-- 編集モード用の隠しフィールド -->
       <input type="hidden" id="requestId" name="requestId">
 
       <!-- 基本情報セクション -->
@@ -35,7 +35,7 @@
           </div>
         </div>
 
-        <!-- ★★★ NEW: 荷主のお気に入り入力ボックス ★★★ -->
+        <!-- 荷主のお気に入り入力ボックス -->
         <div class="row" id="shipperFavoritesBox" style="display: none;">
           <div class="col s12">
             <div class="card-panel blue lighten-5" style="padding: 15px; margin-top: 0;">
@@ -43,38 +43,19 @@
                 <i class="material-icons left" style="font-size: 1.3rem;">history</i>
                 よく使う設定
               </h6>
-              <!-- お気に入り情報がここにJavaScriptで挿入されます -->
               <div id="shipperFavoritesContent">
                 <p class="text-secondary" style="margin: 0;">荷主を選択すると、よく使う設定がここに表示されます。</p>
               </div>
             </div>
           </div>
         </div>
-        <!-- ★★★ NEW: ここまで ★★★ -->
-
-        <div class="row">
-          <div class="input-field col s12">
-            <input type="text" id="productName" name="productName" required>
-            <label for="productName">品名 <span class="red-text">*</span></label>
-          </div>
-        </div>
-
-        <div class="row">
-          <div class="input-field col s12">
-            <select id="requestType" name="requestType" required>
-              <option value="" disabled selected>選択してください</option>
-            </select>
-            <label>依頼車種 <span class="red-text">*</span></label>
-            <span class="helper-text">配車する車両の種類を選択してください</span>
-          </div>
-        </div>
       </div>
 
-      <!-- 積込情報セクション -->
+      <!-- 日程セクション -->
       <div class="form-section">
         <h5 class="section-title">
-          <i class="material-icons">arrow_upward</i>
-          積込情報
+          <i class="material-icons">event</i>
+          日程
         </h5>
 
         <div class="row">
@@ -86,8 +67,55 @@
           <div class="input-field col s12 m6">
             <input type="time" id="loadTime" name="loadTime" class="timepicker">
             <label for="loadTime" class="active">積込時間</label>
+            <span class="helper-text">未定の場合は空欄でOK</span>
           </div>
         </div>
+
+        <div class="row">
+          <div class="input-field col s12 m6">
+            <input type="date" id="unloadDate" name="unloadDate" class="datepicker" required>
+            <label for="unloadDate" class="active">荷卸日 <span class="red-text">*</span></label>
+          </div>
+
+          <div class="input-field col s12 m6">
+            <input type="time" id="unloadTime" name="unloadTime" class="timepicker">
+            <label for="unloadTime" class="active">荷卸時間</label>
+            <span class="helper-text">未定の場合は空欄でOK</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 依頼詳細セクション -->
+      <div class="form-section">
+        <h5 class="section-title">
+          <i class="material-icons">assignment</i>
+          依頼詳細
+        </h5>
+
+        <div class="row">
+          <div class="input-field col s12">
+            <select id="requestType" name="requestType" required>
+              <option value="" disabled selected>選択してください</option>
+            </select>
+            <label>依頼車種 <span class="red-text">*</span></label>
+            <span class="helper-text">配車する車両の種類を選択してください</span>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="input-field col s12">
+            <input type="text" id="productName" name="productName" required>
+            <label for="productName">品名 <span class="red-text">*</span></label>
+          </div>
+        </div>
+      </div>
+
+      <!-- 積込場所セクション -->
+      <div class="form-section">
+        <h5 class="section-title">
+          <i class="material-icons">arrow_upward</i>
+          積込場所
+        </h5>
 
         <div class="row">
           <div class="input-field col s12">
@@ -106,24 +134,12 @@
         </div>
       </div>
 
-      <!-- 荷卸情報セクション -->
+      <!-- 荷卸場所セクション -->
       <div class="form-section">
         <h5 class="section-title">
           <i class="material-icons">arrow_downward</i>
-          荷卸情報
+          荷卸場所
         </h5>
-
-        <div class="row">
-          <div class="input-field col s12 m6">
-            <input type="date" id="unloadDate" name="unloadDate" class="datepicker" required>
-            <label for="unloadDate" class="active">荷卸日 <span class="red-text">*</span></label>
-          </div>
-
-          <div class="input-field col s12 m6">
-            <input type="time" id="unloadTime" name="unloadTime" class="timepicker">
-            <label for="unloadTime" class="active">荷卸時間</label>
-          </div>
-        </div>
 
         <div class="row">
           <div class="input-field col s12">
@@ -144,13 +160,13 @@
 
       <!-- フォームアクション -->
       <div class="form-actions">
-        <button type="button" id="cancelBtn" class="btn btn-large waves-effect waves-light grey"> <!-- ★ MOD: ID "resetBtn" -> "cancelBtn" -->
+        <button type="button" id="cancelBtn" class="btn btn-large waves-effect waves-light grey">
           <i class="material-icons left">clear</i>
-          <span id="cancelBtnText">クリア</span> <!-- ★ NEW: ボタンテキストspan -->
+          <span id="cancelBtnText">クリア</span>
         </button>
-        <button type="submit" id="submitBtn" class="btn btn-large waves-effect waves-light blue darken-1"> <!-- ★ MOD: ID "submitBtn" を追加 -->
+        <button type="submit" id="submitBtn" class="btn btn-large waves-effect waves-light blue darken-1">
           <i class="material-icons left">save</i>
-          <span id="submitBtnText">登録</span> <!-- ★ NEW: ボタンテキストspan -->
+          <span id="submitBtnText">登録</span>
         </button>
       </div>
 
@@ -167,9 +183,9 @@
     </span>
     <ul class="browser-default">
       <li><span class="red-text">*</span>印の項目は必須入力です</li>
-      <li>積込日と荷卸日は、荷卸日が積込日以降になるように入力してください</li>
+      <li>荷卸日は、積込日以降の日付を入力してください</li>
       <li>依頼車種は、実際に配車する車両の種類を選択してください</li>
-      <li>時間が未定の場合は、時間の入力を空欄のままにしてください</li>
+      <li>時間が未定の場合は、時間の入力を空欄のままにしてください（午前中・午後など大まかな指定で構いません）</li>
     </ul>
   </div>
 </div>
