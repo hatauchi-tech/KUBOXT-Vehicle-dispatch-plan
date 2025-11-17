@@ -19,6 +19,36 @@
 
 <!-- ★★★ タブコンテンツ1: 当日の配送計画 (修正) ★★★ -->
 <div id="view-today" class="dispatch-plan">
+  <!-- ★ NEW: 日付選択ボタン -->
+  <div class="row">
+    <div class="col s12">
+      <div class="card blue-grey lighten-5">
+        <div class="card-content" style="padding: 15px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+            <div style="margin-right: 20px; margin-bottom: 10px;">
+              <i class="material-icons left" style="vertical-align: middle;">date_range</i>
+              <strong>表示する日付を選択:</strong>
+            </div>
+            <div class="btn-group" style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button id="showDayBeforeYesterdayBtn" class="btn waves-effect waves-light grey lighten-1" data-offset="-2">
+                <i class="material-icons left">skip_previous</i>
+                一昨日
+              </button>
+              <button id="showYesterdayBtn" class="btn waves-effect waves-light grey lighten-1" data-offset="-1">
+                <i class="material-icons left">chevron_left</i>
+                昨日
+              </button>
+              <button id="showTodayBtn" class="btn waves-effect waves-light blue darken-1" data-offset="0">
+                <i class="material-icons left">today</i>
+                本日
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="row">
     <div class="col s12">
       <div class="card">
@@ -26,14 +56,14 @@
           <span class="card-title" style="display: flex; justify-content: space-between; align-items: center;">
             <div>
               <i class="material-icons left">calendar_today</i>
-              本日 (<span id="todayDateStr"></span>) の配車確定一覧
+              <span id="selectedDateLabel">本日</span> (<span id="todayDateStr"></span>) の配車確定一覧
             </div>
             <button id="reloadTodayPlanBtn" class="btn-floating waves-effect waves-light blue lighten-1" title="最新の情報に更新">
               <i class="material-icons">refresh</i>
             </button>
           </span>
           <p class="text-secondary mb-md">
-            本日が積込日の配車が確定した依頼（車両・運転手）の一覧です。
+            選択された日付の積込予定で、配車が確定した依頼（車両・運転手）の一覧です。
           </p>
 
           <div id="todayAssignedRequests" class="mt-md">

@@ -1052,15 +1052,15 @@
       console.log('[DispatchPlan.init] Initializing...'); // ★ DEBUG LOG
       this.setupEventListeners();
       this.populateFilters();
-      
+
       UI.showLoading('依頼データを読み込み中...');
       try {
         console.log('[DispatchPlan.init] Awaiting this.loadUnassignedRequests...'); // ★ DEBUG LOG
         await this.loadUnassignedRequests(); // ★ MOD: 分離
-        
-        console.log('[DispatchPlan.init] Awaiting this.loadTodayAssignedRequests...'); // ★ DEBUG LOG
-        await this.loadTodayAssignedRequests();
-        
+
+        console.log('[DispatchPlan.init] Awaiting this.loadAssignedRequestsByDate...'); // ★ DEBUG LOG
+        await this.loadAssignedRequestsByDate(0); // ★ MOD: デフォルトで本日を表示
+
       } catch (error) {
         console.error('[DispatchPlan.init] Load requests error:', error); // ★ DEBUG LOG
         UI.showError('依頼データの読み込みに失敗しました');
@@ -1070,29 +1070,75 @@
     },
 
     /**
-     * 当日の配車確定データを読み込む
+     * ★ NEW: 指定された日付の配車確定データを読み込む
+     * @param {number} dateOffset - 日付のオフセット (0=本日, -1=昨日, -2=一昨日)
      */
-    async loadTodayAssignedRequests() {
-      const todayString = Utils.getToday();
-      console.log(`[DispatchPlan.loadToday] Loading for date: ${todayString}`); // ★ DEBUG LOG
-      
-      const todayDateElem = document.getElementById('todayDateStr');
-      if (todayDateElem) {
-        todayDateElem.textContent = Utils.formatDateJP(todayString);
+    async loadAssignedRequestsByDate(dateOffset = 0) {
+      // 日付を計算
+      const targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() + dateOffset);
+      const targetDateString = Utils.formatDate(targetDate);
+
+      console.log(`[DispatchPlan.loadAssignedRequestsByDate] Loading for offset: ${dateOffset}, date: ${targetDateString}`); // ★ DEBUG LOG
+
+      // 日付ラベルと表示を更新
+      const dateLabelMap = {
+        0: '本日',
+        '-1': '昨日',
+        '-2': '一昨日'
+      };
+      const dateLabel = dateLabelMap[dateOffset] || `${dateOffset}日前`;
+
+      const selectedDateLabelElem = document.getElementById('selectedDateLabel');
+      if (selectedDateLabelElem) {
+        selectedDateLabelElem.textContent = dateLabel;
       }
 
+      const todayDateElem = document.getElementById('todayDateStr');
+      if (todayDateElem) {
+        todayDateElem.textContent = Utils.formatDateJP(targetDateString);
+      }
+
+      // ボタンのアクティブ状態を更新
+      this.updateDateButtonStates(dateOffset);
+
       try {
-        const requests = await API.getAssignedRequestsByDate(todayString);
-        console.log(`[DispatchPlan.loadToday] Received ${requests.length} assigned requests`); // ★ DEBUG LOG
+        const requests = await API.getAssignedRequestsByDate(targetDateString);
+        console.log(`[DispatchPlan.loadAssignedRequestsByDate] Received ${requests.length} assigned requests`); // ★ DEBUG LOG
         this.renderTodayAssignedRequests(requests);
       } catch (error) {
-        console.error('[DispatchPlan.loadToday] Load today assigned requests error:', error); // ★ DEBUG LOG
-        UI.showError('当日の配車計画の読み込みに失敗しました');
+        console.error('[DispatchPlan.loadAssignedRequestsByDate] Load assigned requests error:', error); // ★ DEBUG LOG
+        UI.showError('配車計画の読み込みに失敗しました');
         const container = document.getElementById('todayAssignedRequests');
         if (container) {
           container.innerHTML = '<p class="text-center text-error">データの読み込みに失敗しました</p>';
         }
       }
+    },
+
+    /**
+     * ★ NEW: 日付選択ボタンのアクティブ状態を更新
+     * @param {number} activeOffset - アクティブにするボタンのオフセット
+     */
+    updateDateButtonStates(activeOffset) {
+      const buttons = [
+        { id: 'showDayBeforeYesterdayBtn', offset: -2 },
+        { id: 'showYesterdayBtn', offset: -1 },
+        { id: 'showTodayBtn', offset: 0 }
+      ];
+
+      buttons.forEach(btn => {
+        const element = document.getElementById(btn.id);
+        if (element) {
+          if (btn.offset === activeOffset) {
+            element.classList.remove('grey', 'lighten-1');
+            element.classList.add('blue', 'darken-1');
+          } else {
+            element.classList.remove('blue', 'darken-1');
+            element.classList.add('grey', 'lighten-1');
+          }
+        }
+      });
     },
     
     /**
@@ -1228,9 +1274,24 @@
       // 当日タブ
       const reloadTodayBtn = document.getElementById('reloadTodayPlanBtn');
       if (reloadTodayBtn) {
-        reloadTodayBtn.addEventListener('click', () => this.loadTodayAssignedRequests());
+        reloadTodayBtn.addEventListener('click', () => this.loadAssignedRequestsByDate(0));
       }
-      
+
+      // ★ NEW: 日付選択ボタン
+      const showTodayBtn = document.getElementById('showTodayBtn');
+      const showYesterdayBtn = document.getElementById('showYesterdayBtn');
+      const showDayBeforeYesterdayBtn = document.getElementById('showDayBeforeYesterdayBtn');
+
+      if (showTodayBtn) {
+        showTodayBtn.addEventListener('click', () => this.loadAssignedRequestsByDate(0));
+      }
+      if (showYesterdayBtn) {
+        showYesterdayBtn.addEventListener('click', () => this.loadAssignedRequestsByDate(-1));
+      }
+      if (showDayBeforeYesterdayBtn) {
+        showDayBeforeYesterdayBtn.addEventListener('click', () => this.loadAssignedRequestsByDate(-2));
+      }
+
       const todayContainer = document.getElementById('todayAssignedRequests');
       if (todayContainer) {
         todayContainer.addEventListener('click', (e) => {
