@@ -19,12 +19,13 @@
 
 <!-- ★★★ タブコンテンツ1: 当日の配送計画 (修正) ★★★ -->
 <div id="view-today" class="dispatch-plan">
-  <!-- ★ NEW: 日付選択ボタン -->
+  <!-- ★ NEW: 日付選択ボタン & グルーピング選択 -->
   <div class="row">
     <div class="col s12">
       <div class="card blue-grey lighten-5">
         <div class="card-content" style="padding: 15px;">
-          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;">
+          <!-- 日付選択 -->
+          <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; margin-bottom: 15px;">
             <div style="margin-right: 20px; margin-bottom: 10px;">
               <i class="material-icons left" style="vertical-align: middle;">date_range</i>
               <strong>表示する日付を選択:</strong>
@@ -42,6 +43,23 @@
                 <i class="material-icons left">today</i>
                 本日
               </button>
+            </div>
+          </div>
+
+          <!-- グルーピング選択 -->
+          <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap; border-top: 1px solid #CFD8DC; padding-top: 15px;">
+            <div style="margin-right: 10px;">
+              <i class="material-icons left" style="vertical-align: middle;">view_list</i>
+              <strong>グループ表示:</strong>
+            </div>
+            <div class="input-field" style="margin: 0; flex: 0 0 200px;">
+              <select id="planGroupBy">
+                <option value="vehicle" selected>車両別</option>
+                <option value="driver">運転手別</option>
+                <option value="vehicleType">車種別</option>
+                <option value="shipper">荷主別</option>
+              </select>
+              <label></label>
             </div>
           </div>
         </div>

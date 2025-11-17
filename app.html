@@ -1050,6 +1050,10 @@
   const DispatchPlan = {
     async init() {
       console.log('[DispatchPlan.init] Initializing...'); // ★ DEBUG LOG
+      this.currentGroupBy = 'vehicle'; // ★ NEW: 現在のグルーピング軸を保持
+      this.currentDateOffset = 0; // ★ NEW: 現在の日付オフセットを保持
+      this.currentRequests = []; // ★ NEW: 現在の依頼データを保持
+
       this.setupEventListeners();
       this.populateFilters();
 
@@ -1081,6 +1085,9 @@
 
       console.log(`[DispatchPlan.loadAssignedRequestsByDate] Loading for offset: ${dateOffset}, date: ${targetDateString}`); // ★ DEBUG LOG
 
+      // ★ NEW: 現在の日付オフセットを保持
+      this.currentDateOffset = dateOffset;
+
       // 日付ラベルと表示を更新
       const dateLabelMap = {
         0: '本日',
@@ -1105,7 +1112,12 @@
       try {
         const requests = await API.getAssignedRequestsByDate(targetDateString);
         console.log(`[DispatchPlan.loadAssignedRequestsByDate] Received ${requests.length} assigned requests`); // ★ DEBUG LOG
-        this.renderTodayAssignedRequests(requests);
+
+        // ★ NEW: 現在の依頼データを保持
+        this.currentRequests = requests;
+
+        // 現在のグルーピング軸で表示
+        this.renderTodayAssignedRequests(requests, this.currentGroupBy);
       } catch (error) {
         console.error('[DispatchPlan.loadAssignedRequestsByDate] Load assigned requests error:', error); // ★ DEBUG LOG
         UI.showError('配車計画の読み込みに失敗しました');
@@ -1142,10 +1154,12 @@
     },
     
     /**
-     * ★ MOD: 当日の配車確定データを描画する（アコーディオン対応）
+     * ★ MOD: 当日の配車確定データを描画する（アコーディオン対応＆グルーピング対応）
+     * @param {Array} requests - 依頼データの配列
+     * @param {string} groupBy - グルーピング軸 ('vehicle', 'driver', 'vehicleType', 'shipper')
      */
-    renderTodayAssignedRequests(requests) {
-      console.log(`[DispatchPlan.renderToday] Rendering ${requests.length} requests.`); // ★ DEBUG LOG
+    renderTodayAssignedRequests(requests, groupBy = 'vehicle') {
+      console.log(`[DispatchPlan.renderToday] Rendering ${requests.length} requests with groupBy: ${groupBy}`); // ★ DEBUG LOG
       const container = document.getElementById('todayAssignedRequests');
       if (!container) {
          console.error('[DispatchPlan.renderToday] Container #todayAssignedRequests not found!'); // ★ DEBUG LOG
@@ -1157,13 +1171,44 @@
         return;
       }
 
-      // 車両ごとにグループ化
-      const groupedByVehicle = requests.reduce((acc, req) => {
-        const key = req.vehicleNumber || 'unknown';
+      // ★ NEW: グルーピング軸に応じてグループ化
+      const groupConfig = {
+        vehicle: {
+          keyField: 'vehicleNumber',
+          displayName: (req) => `${req.vehicleNumber || '未設定'} (${req.driverName || '未設定'})`,
+          badge: (req) => req.vehicleType || '-',
+          icon: 'local_shipping'
+        },
+        driver: {
+          keyField: 'driverName',
+          displayName: (req) => req.driverName || '未設定',
+          badge: (req) => `${req.vehicleNumber || '-'} / ${req.vehicleType || '-'}`,
+          icon: 'person'
+        },
+        vehicleType: {
+          keyField: 'vehicleType',
+          displayName: (req) => req.vehicleType || '未設定',
+          badge: (req) => '',
+          icon: 'directions_car'
+        },
+        shipper: {
+          keyField: 'shipper',
+          displayName: (req) => req.shipper || '未設定',
+          badge: (req) => '',
+          icon: 'business'
+        }
+      };
+
+      const config = groupConfig[groupBy] || groupConfig.vehicle;
+
+      // グループ化
+      const grouped = requests.reduce((acc, req) => {
+        const key = req[config.keyField] || 'unknown';
         if (!acc[key]) {
           acc[key] = {
-            driverName: req.driverName,
-            vehicleType: req.vehicleType,
+            displayName: config.displayName(req),
+            badge: config.badge(req),
+            icon: config.icon,
             requests: []
           };
         }
@@ -1171,22 +1216,21 @@
         return acc;
       }, {});
 
-      // 時間でソート
-      for (const vehicle in groupedByVehicle) {
-        groupedByVehicle[vehicle].requests = Utils.sortArray(groupedByVehicle[vehicle].requests, 'loadTime', true);
+      // 各グループ内で時間でソート
+      for (const groupKey in grouped) {
+        grouped[groupKey].requests = Utils.sortArray(grouped[groupKey].requests, 'loadTime', true);
       }
 
-      // ★ NEW: アコーディオン形式のHTMLを構築
+      // ★ NEW: アコーディオン形式のHTMLを構築（グルーピング対応）
       const accordionHtml = `
         <ul class="collapsible" id="vehicleAccordion">
-          ${Object.entries(groupedByVehicle).map(([vehicleNumber, data]) => `
+          ${Object.entries(grouped).map(([groupKey, data]) => `
             <li class="active">
               <div class="collapsible-header" style="display: flex; justify-content: space-between; align-items: center; background-color: #E3F2FD;">
                 <div style="flex: 1;">
-                  <i class="material-icons" style="color: #1976D2;">local_shipping</i>
-                  <strong style="font-size: 1.1rem; color: #1976D2;">${vehicleNumber}</strong>
-                  <span style="margin-left: 10px; color: #666;">(${data.driverName || '未設定'})</span>
-                  <span class="chip chip-info" style="margin-left: 10px;">${data.vehicleType}</span>
+                  <i class="material-icons" style="color: #1976D2;">${data.icon}</i>
+                  <strong style="font-size: 1.1rem; color: #1976D2;">${data.displayName}</strong>
+                  ${data.badge ? `<span class="chip chip-info" style="margin-left: 10px;">${data.badge}</span>` : ''}
                 </div>
                 <div>
                   <span class="badge blue white-text" style="margin-right: 10px;">${data.requests.length} 件</span>
@@ -1205,6 +1249,7 @@
                         <div class="request-plan-details">
                           <div style="margin-bottom: 5px;">
                             <strong style="font-size: 1rem;">${req.shipper}</strong> - ${req.productName}
+                            ${groupBy !== 'vehicle' ? `<div style="font-size: 0.85rem; color: #999; margin-top: 3px;">${req.vehicleNumber || '未配車'} (${req.driverName || '-'})</div>` : ''}
                           </div>
                           <div class="request-info" style="font-size: 0.9rem; color: #666;">
                             <div>積: ${req.loadPlace1}</div>
@@ -1300,7 +1345,7 @@
       // 当日タブ
       const reloadTodayBtn = document.getElementById('reloadTodayPlanBtn');
       if (reloadTodayBtn) {
-        reloadTodayBtn.addEventListener('click', () => this.loadAssignedRequestsByDate(0));
+        reloadTodayBtn.addEventListener('click', () => this.loadAssignedRequestsByDate(this.currentDateOffset));
       }
 
       // ★ NEW: 日付選択ボタン
@@ -1316,6 +1361,19 @@
       }
       if (showDayBeforeYesterdayBtn) {
         showDayBeforeYesterdayBtn.addEventListener('click', () => this.loadAssignedRequestsByDate(-2));
+      }
+
+      // ★ NEW: グルーピング選択
+      const groupBySelect = document.getElementById('planGroupBy');
+      if (groupBySelect) {
+        groupBySelect.addEventListener('change', (e) => {
+          this.currentGroupBy = e.target.value;
+          this.renderTodayAssignedRequests(this.currentRequests, this.currentGroupBy);
+        });
+        // Materialize CSS select初期化
+        setTimeout(() => {
+          M.FormSelect.init(groupBySelect);
+        }, 100);
       }
 
       const todayContainer = document.getElementById('todayAssignedRequests');
