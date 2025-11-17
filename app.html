@@ -1142,7 +1142,7 @@
     },
     
     /**
-     * 当日の配車確定データを描画する
+     * ★ MOD: 当日の配車確定データを描画する（アコーディオン対応）
      */
     renderTodayAssignedRequests(requests) {
       console.log(`[DispatchPlan.renderToday] Rendering ${requests.length} requests.`); // ★ DEBUG LOG
@@ -1151,12 +1151,12 @@
          console.error('[DispatchPlan.renderToday] Container #todayAssignedRequests not found!'); // ★ DEBUG LOG
          return;
       }
-      
+
       if (requests.length === 0) {
-        container.innerHTML = '<p class="text-center text-secondary">本日の配車確定済み依頼はありません</p>';
+        container.innerHTML = '<p class="text-center text-secondary">配車確定済み依頼はありません</p>';
         return;
       }
-      
+
       // 車両ごとにグループ化
       const groupedByVehicle = requests.reduce((acc, req) => {
         const key = req.vehicleNumber || 'unknown';
@@ -1170,47 +1170,73 @@
         acc[key].requests.push(req);
         return acc;
       }, {});
-      
+
       // 時間でソート
       for (const vehicle in groupedByVehicle) {
         groupedByVehicle[vehicle].requests = Utils.sortArray(groupedByVehicle[vehicle].requests, 'loadTime', true);
       }
-      
-      // HTMLを構築
-      container.innerHTML = Object.entries(groupedByVehicle).map(([vehicleNumber, data]) => {
-        return `
-          <div class="card vehicle-plan-card">
-            <div class="card-content">
-              <div class="card-title" style="font-size: 1.25rem; color: #1976D2; margin-bottom: 10px;">
-                <i class="material-icons left">local_shipping</i>
-                ${vehicleNumber} (${data.driverName || '未設定'})
-                <span class="chip chip-info right">${data.vehicleType}</span>
+
+      // ★ NEW: アコーディオン形式のHTMLを構築
+      const accordionHtml = `
+        <ul class="collapsible" id="vehicleAccordion">
+          ${Object.entries(groupedByVehicle).map(([vehicleNumber, data]) => `
+            <li class="active">
+              <div class="collapsible-header" style="display: flex; justify-content: space-between; align-items: center; background-color: #E3F2FD;">
+                <div style="flex: 1;">
+                  <i class="material-icons" style="color: #1976D2;">local_shipping</i>
+                  <strong style="font-size: 1.1rem; color: #1976D2;">${vehicleNumber}</strong>
+                  <span style="margin-left: 10px; color: #666;">(${data.driverName || '未設定'})</span>
+                  <span class="chip chip-info" style="margin-left: 10px;">${data.vehicleType}</span>
+                </div>
+                <div>
+                  <span class="badge blue white-text" style="margin-right: 10px;">${data.requests.length} 件</span>
+                </div>
               </div>
-              
-              ${data.requests.map(req => `
-                <div class="request-plan-item">
-                  <div class="request-plan-time">${Utils.formatTime(req.loadTime) || '時間未定'}</div>
-                  <div class="request-plan-details">
-                    <strong>${req.shipper}</strong> - ${req.productName}
-                    <div class="request-info">
-                      積: ${req.loadPlace1}
-                      <span class="right">卸: ${req.unloadPlace1}</span>
+              <div class="collapsible-body" style="padding: 15px; background-color: #FAFAFA;">
+                ${data.requests.map(req => `
+                  <div class="request-plan-item" style="border-bottom: 1px solid #E0E0E0; padding: 12px 0; margin: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                      <div style="flex: 0 0 80px;">
+                        <div class="request-plan-time" style="font-size: 1.1rem; font-weight: bold; color: #1976D2;">
+                          ${Utils.formatTime(req.loadTime) || '時間未定'}
+                        </div>
+                      </div>
+                      <div style="flex: 1; margin: 0 15px;">
+                        <div class="request-plan-details">
+                          <div style="margin-bottom: 5px;">
+                            <strong style="font-size: 1rem;">${req.shipper}</strong> - ${req.productName}
+                          </div>
+                          <div class="request-info" style="font-size: 0.9rem; color: #666;">
+                            <div>積: ${req.loadPlace1}</div>
+                            <div>卸: ${req.unloadPlace1}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div style="flex: 0 0 auto;">
+                        <button class="btn-small waves-effect waves-light amber darken-3 unassign-btn"
+                                data-request-id="${req.requestId}"
+                                title="配車を解除する">
+                          <i class="material-icons">undo</i>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div class="request-plan-action">
-                    <button class="btn-small waves-effect waves-light amber darken-3 unassign-btn" 
-                            data-request-id="${req.requestId}" 
-                            title="配車を解除する">
-                      <i class="material-icons">undo</i>
-                    </button>
-                  </div>
-                </div>
-              `).join('')}
-              
-            </div>
-          </div>
-        `;
-      }).join('');
+                `).join('')}
+              </div>
+            </li>
+          `).join('')}
+        </ul>
+      `;
+
+      container.innerHTML = accordionHtml;
+
+      // ★ NEW: Collapsibleを初期化（すべて展開状態で）
+      setTimeout(() => {
+        const elems = document.querySelectorAll('#vehicleAccordion');
+        M.Collapsible.init(elems, {
+          accordion: false // falseにすることで複数同時展開可能
+        });
+      }, 100);
     },
 
     populateFilters() {
