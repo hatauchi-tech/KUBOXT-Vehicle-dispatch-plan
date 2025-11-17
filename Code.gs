@@ -535,6 +535,45 @@ function apiDeleteRequest(requestId) {
   }
 }
 
+/**
+ * ★★★ NEW: 複数の依頼を一括登録（API）
+ * @param {string} requestsArrayJson - 依頼データ配列のJSON文字列
+ * @returns {Object} { success: boolean, requestIds: Array, message: string }
+ */
+function apiCreateRequestBatch(requestsArrayJson) {
+  try {
+    // JSON文字列をパース
+    const requestsArray = JSON.parse(requestsArrayJson);
+
+    // 各依頼の日付文字列をDateオブジェクトに変換
+    const parsedRequests = requestsArray.map(requestData => {
+      const parsed = { ...requestData };
+      if (parsed.receivedDate) {
+        parsed.receivedDate = new Date(parsed.receivedDate);
+      }
+      if (parsed.loadDate) {
+        parsed.loadDate = new Date(parsed.loadDate);
+      }
+      if (parsed.unloadDate) {
+        parsed.unloadDate = new Date(parsed.unloadDate);
+      }
+      return parsed;
+    });
+
+    // 一括登録を実行
+    const result = createRequestBatch(parsedRequests);
+    return result;
+
+  } catch (error) {
+    logMessage('ERROR', 'apiCreateRequestBatch: ' + error.toString());
+    return {
+      success: false,
+      requestIds: [],
+      message: error.message
+    };
+  }
+}
+
 
 /**
  * 依頼に車両を割り当て（API）

@@ -38,6 +38,7 @@
     loading: false,
     currentFormMode: 'create',
     currentEditingRequestId: null,
+    requestDetails: [], // ★ NEW: 明細データ（一括登録用）
   };
   
   // ===========================================================================
@@ -120,6 +121,10 @@
     async createRequest(requestData) {
       const requestJson = JSON.stringify(requestData);
       return await this.call('apiCreateRequest', requestJson);
+    },
+    async createRequestBatch(requestsArray) {
+      const requestsJson = JSON.stringify(requestsArray);
+      return await this.call('apiCreateRequestBatch', requestsJson);
     },
     async updateRequest(requestData) {
       const requestJson = JSON.stringify(requestData);
@@ -595,10 +600,12 @@
       } else {
         AppState.currentFormMode = 'create';
         AppState.currentEditingRequestId = null;
+        AppState.requestDetails = []; // ★ NEW: 新規登録モード時は明細をクリア
       }
       this.setupEventListeners();
       this.setupFormUI();
       await this.populateFormData();
+      this.renderDetailTable(); // ★ NEW: 明細テーブルを初期化
       App.initAutocomplete(); // ★ NEW: ページ遷移時にもAutocompleteを再初期化
     },
     setupFormUI() {
@@ -622,11 +629,13 @@
     async populateFormData() {
       console.log('[RequestForm.populateFormData] Populating selects...'); // ★ DEBUG LOG
       Utils.populateSelect('shipper', AppState.shippers, 'shipperId', 'shipperName', '荷主を選択');
-      Utils.populateSelect('requestType', AppState.requestTypes.map(type => ({
+
+      // ★ NEW: 明細入力用の依頼車種セレクトも初期化
+      Utils.populateSelect('detailRequestType', AppState.requestTypes.map(type => ({
         value: type,
         label: type
       })), 'value', 'label', '依頼車種を選択');
-      
+
       if (AppState.currentFormMode === 'edit') {
         console.log(`[RequestForm.populateFormData] Edit mode: Loading data for ${AppState.currentEditingRequestId}`); // ★ DEBUG LOG
         try {
@@ -680,6 +689,13 @@
         cancelBtn.removeEventListener('click', this.handleCancel);
         cancelBtn.addEventListener('click', () => this.handleCancel());
       }
+
+      // ★ NEW: 明細追加ボタンのイベントリスナー
+      const addDetailBtn = document.getElementById('addDetailBtn');
+      if (addDetailBtn) {
+        addDetailBtn.removeEventListener('click', this.addDetail);
+        addDetailBtn.addEventListener('click', () => this.addDetail());
+      }
     },
     async handleSubmit(e) {
       e.preventDefault();
@@ -692,6 +708,7 @@
       }
       try {
         if (AppState.currentFormMode === 'edit') {
+          // 編集モードでは従来通り単一更新（明細機能は使用しない）
           console.log('[RequestForm.handleSubmit] Updating request...'); // ★ DEBUG LOG
           UI.showLoading('依頼を更新中...');
           const result = await API.updateRequest(formData);
@@ -703,13 +720,26 @@
             UI.showError('依頼の更新に失敗しました: ' + result.message);
           }
         } else {
-          console.log('[RequestForm.handleSubmit] Creating new request...'); // ★ DEBUG LOG
-          UI.showLoading('依頼を登録中...');
-          const result = await API.createRequest(formData);
+          // ★ NEW: 新規登録時は一括登録APIを使用
+          console.log('[RequestForm.handleSubmit] Creating batch requests...', AppState.requestDetails.length); // ★ DEBUG LOG
+          UI.showLoading(`${AppState.requestDetails.length}件の依頼を登録中...`);
+
+          // 基本情報 + 各明細の組み合わせで依頼データ配列を作成
+          const requestsArray = AppState.requestDetails.map(detail => ({
+            ...formData,
+            productName: detail.productName,
+            requestType: detail.requestType
+          }));
+
+          const result = await API.createRequestBatch(requestsArray);
           UI.hideLoading();
+
           if (result.success) {
-            UI.showSuccess('依頼を登録しました (ID: ' + result.requestId + ')');
+            const requestIds = result.requestIds || [];
+            UI.showSuccess(`${requestIds.length}件の依頼を登録しました\n最初のID: ${requestIds[0]}\n最後のID: ${requestIds[requestIds.length - 1]}`);
             Utils.clearForm('requestForm');
+            AppState.requestDetails = []; // 明細をクリア
+            this.renderDetailTable(); // テーブルを再描画
             this.setupFormUI();
             this.populateFormData();
           } else {
@@ -731,12 +761,11 @@
         loadTime: document.getElementById('loadTime').value,
         loadPlace1: document.getElementById('loadPlace1').value,
         loadPlace2: document.getElementById('loadPlace2').value,
-        productName: document.getElementById('productName').value,
         unloadDate: document.getElementById('unloadDate').value,
         unloadTime: document.getElementById('unloadTime').value,
         unloadPlace1: document.getElementById('unloadPlace1').value,
-        unloadPlace2: document.getElementById('unloadPlace2').value,
-        requestType: document.getElementById('requestType').value
+        unloadPlace2: document.getElementById('unloadPlace2').value
+        // ★ NOTE: productName と requestType は明細入力に移動したため削除
       };
       console.log('[RequestForm.getFormData]', data); // ★ DEBUG LOG
       return data;
@@ -746,10 +775,9 @@
       if (!formData.shipper) errors.push('荷主を選択してください');
       if (!formData.loadDate) errors.push('積込日を入力してください');
       if (!formData.loadPlace1) errors.push('積込地1を入力してください');
-      if (!formData.productName) errors.push('品名を入力してください');
       if (!formData.unloadDate) errors.push('荷卸日を入力してください');
       if (!formData.unloadPlace1) errors.push('荷卸地1を入力してください');
-      if (!formData.requestType) errors.push('依頼車種を選択してください');
+      // ★ NOTE: productName と requestType は明細入力時にバリデーション
       if (formData.loadDate && formData.unloadDate) {
         const error = Validator.dateRange(
           formData.loadDate,
@@ -759,6 +787,12 @@
         );
         if (error) errors.push(error);
       }
+
+      // ★ NEW: 明細が1件以上登録されているかチェック
+      if (AppState.requestDetails.length === 0) {
+        errors.push('明細を1件以上登録してください');
+      }
+
       return errors;
     },
     handleCancel() {
@@ -769,8 +803,88 @@
       } else {
         if (UI.confirm('入力内容をクリアしますか?')) {
           Utils.clearForm('requestForm');
+          AppState.requestDetails = []; // ★ NEW: 明細もクリア
+          this.renderDetailTable(); // ★ NEW: テーブルを再描画
           this.populateFormData();
         }
+      }
+    },
+
+    // ★★★ NEW: 明細管理関数 ★★★
+    addDetail() {
+      const requestType = document.getElementById('detailRequestType').value;
+      const productName = document.getElementById('detailProductName').value.trim();
+
+      // バリデーション
+      if (!requestType) {
+        UI.showError('依頼車種を選択してください');
+        return;
+      }
+      if (!productName) {
+        UI.showError('品名を入力してください');
+        return;
+      }
+
+      // 明細を追加
+      AppState.requestDetails.push({
+        requestType: requestType,
+        productName: productName
+      });
+
+      // 入力フィールドをクリア
+      document.getElementById('detailRequestType').value = '';
+      document.getElementById('detailProductName').value = '';
+      M.FormSelect.init(document.querySelectorAll('select'));
+      M.updateTextFields();
+
+      // テーブルを再描画
+      this.renderDetailTable();
+
+      console.log('[RequestForm.addDetail] Detail added:', AppState.requestDetails);
+    },
+
+    removeDetail(index) {
+      if (UI.confirm('この明細を削除しますか?')) {
+        AppState.requestDetails.splice(index, 1);
+        this.renderDetailTable();
+        console.log('[RequestForm.removeDetail] Detail removed. Remaining:', AppState.requestDetails);
+      }
+    },
+
+    renderDetailTable() {
+      const tableBody = document.getElementById('detailTableBody');
+      const table = document.getElementById('detailTable');
+      const noDetailMessage = document.getElementById('noDetailMessage');
+      const detailCount = document.getElementById('detailCount');
+
+      if (!tableBody || !table || !noDetailMessage || !detailCount) return;
+
+      // 件数を更新
+      detailCount.textContent = AppState.requestDetails.length;
+
+      if (AppState.requestDetails.length === 0) {
+        // 明細がない場合
+        table.style.display = 'none';
+        noDetailMessage.style.display = 'block';
+        tableBody.innerHTML = '';
+      } else {
+        // 明細がある場合
+        table.style.display = 'table';
+        noDetailMessage.style.display = 'none';
+
+        // テーブル行を生成
+        tableBody.innerHTML = AppState.requestDetails.map((detail, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${detail.requestType}</td>
+            <td>${detail.productName}</td>
+            <td class="center-align">
+              <button type="button" class="btn-small red waves-effect waves-light" onclick="RequestForm.removeDetail(${index})">
+                <i class="material-icons">delete</i>
+              </button>
+            </td>
+          </tr>
+        `).join('');
       }
     }
   };

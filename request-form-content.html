@@ -85,31 +85,6 @@
         </div>
       </div>
 
-      <!-- 依頼詳細セクション -->
-      <div class="form-section">
-        <h5 class="section-title">
-          <i class="material-icons">assignment</i>
-          依頼詳細
-        </h5>
-
-        <div class="row">
-          <div class="input-field col s12">
-            <select id="requestType" name="requestType" required>
-              <option value="" disabled selected>選択してください</option>
-            </select>
-            <label>依頼車種 <span class="red-text">*</span></label>
-            <span class="helper-text">配車する車両の種類を選択してください</span>
-          </div>
-        </div>
-
-        <div class="row">
-          <div class="input-field col s12">
-            <input type="text" id="productName" name="productName" required>
-            <label for="productName">品名 <span class="red-text">*</span></label>
-          </div>
-        </div>
-      </div>
-
       <!-- 積込場所セクション -->
       <div class="form-section">
         <h5 class="section-title">
@@ -158,6 +133,76 @@
         </div>
       </div>
 
+      <!-- ★★★ NEW: 明細入力セクション ★★★ -->
+      <div class="form-section">
+        <h5 class="section-title">
+          <i class="material-icons">list</i>
+          明細登録
+          <span style="font-size: 0.9rem; color: #666; font-weight: normal; margin-left: 10px;">
+            (複数の車両・品名を一括登録できます)
+          </span>
+        </h5>
+
+        <!-- 明細入力フォーム -->
+        <div class="card blue-grey lighten-5" style="padding: 20px; margin-bottom: 20px;">
+          <div class="row" style="margin-bottom: 10px;">
+            <div class="input-field col s12 m6">
+              <select id="detailRequestType">
+                <option value="" disabled selected>選択してください</option>
+              </select>
+              <label>依頼車種 <span class="red-text">*</span></label>
+            </div>
+
+            <div class="input-field col s12 m6">
+              <input type="text" id="detailProductName">
+              <label for="detailProductName">品名 <span class="red-text">*</span></label>
+            </div>
+          </div>
+
+          <div class="row" style="margin-bottom: 0;">
+            <div class="col s12 center-align">
+              <button type="button" id="addDetailBtn" class="btn waves-effect waves-light green">
+                <i class="material-icons left">add</i>
+                明細を追加
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 明細一覧テーブル -->
+        <div id="detailListContainer">
+          <table class="striped highlight responsive-table" id="detailTable" style="display: none;">
+            <thead>
+              <tr>
+                <th style="width: 60px;">No.</th>
+                <th>依頼車種</th>
+                <th>品名</th>
+                <th style="width: 100px; text-align: center;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="detailTableBody">
+              <!-- 明細行がJavaScriptで追加されます -->
+            </tbody>
+          </table>
+          <div id="noDetailMessage" class="center-align" style="padding: 20px; color: #666;">
+            <i class="material-icons" style="font-size: 48px; color: #bbb;">inbox</i>
+            <p>明細が登録されていません。上記のフォームから明細を追加してください。</p>
+          </div>
+        </div>
+
+        <div class="row" style="margin-top: 20px;">
+          <div class="col s12">
+            <p class="helper-text" style="margin: 0;">
+              <i class="material-icons tiny">info</i>
+              <strong>登録件数: <span id="detailCount" class="blue-text">0</span> 件</strong>
+              <br>
+              同じ現場に複数台の車両が必要な場合、明細を複数追加してから一括登録してください。
+            </p>
+          </div>
+        </div>
+      </div>
+      <!-- ★★★ 明細入力セクション ここまで ★★★ -->
+
       <!-- フォームアクション -->
       <div class="form-actions">
         <button type="button" id="cancelBtn" class="btn btn-large waves-effect waves-light grey">
@@ -166,7 +211,7 @@
         </button>
         <button type="submit" id="submitBtn" class="btn btn-large waves-effect waves-light blue darken-1">
           <i class="material-icons left">save</i>
-          <span id="submitBtnText">登録</span>
+          <span id="submitBtnText">一括登録</span>
         </button>
       </div>
 
@@ -184,8 +229,9 @@
     <ul class="browser-default">
       <li><span class="red-text">*</span>印の項目は必須入力です</li>
       <li>荷卸日は、積込日以降の日付を入力してください</li>
-      <li>依頼車種は、実際に配車する車両の種類を選択してください</li>
       <li>時間が未定の場合は、時間の入力を空欄のままにしてください（午前中・午後など大まかな指定で構いません）</li>
+      <li><strong>明細登録について:</strong> 同じ現場に複数台（10台、15台等）が必要な場合、明細を複数追加してから「一括登録」ボタンを押してください</li>
+      <li>一括登録すると、明細の数だけ依頼IDが連番で自動生成されます（例: REQ20251117-0001, REQ20251117-0002...）</li>
     </ul>
   </div>
 </div>
