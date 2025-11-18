@@ -136,6 +136,14 @@
     async assignVehicle(requestId, vehicleNumber) {
       return await this.call('apiAssignVehicle', requestId, vehicleNumber);
     },
+    /**
+     * ★ NEW: 傭車を割り当て（運転手名を指定）
+     * @param {string} requestId - 依頼ID
+     * @param {string} driverName - 運転手名
+     */
+    async assignCharterVehicle(requestId, driverName) {
+      return await this.call('apiAssignCharterVehicle', requestId, driverName);
+    },
     async unassignVehicle(requestId) {
       return await this.call('apiUnassignVehicle', requestId);
     },
@@ -1528,10 +1536,109 @@
       console.log(`[DispatchPlan.renderAvailableVehicles] Rendering ${vehicles.length} vehicles`); // ★ DEBUG LOG
       const container = document.getElementById('availableVehicles');
       if (!container) return;
+
+      // ★ MOD: 車両がない場合は傭車を表示
       if (vehicles.length === 0) {
-        container.innerHTML = '<p class="text-center text-secondary">この依頼に割り当て可能な車両がありません</p>';
+        container.innerHTML = `
+          <div class="card orange lighten-5" style="padding: 15px; margin-bottom: 15px;">
+            <p style="margin: 0 0 10px 0; color: #E65100;">
+              <i class="material-icons left" style="vertical-align: middle;">info</i>
+              <strong>割り当て可能な自社車両がありません</strong>
+            </p>
+            <p style="margin: 0; font-size: 0.9rem; color: #666;">
+              傭車（外注車両）を利用する場合は、下のボタンから登録してください。
+            </p>
+          </div>
+
+          <div class="vehicle-item" style="background-color: #FFF3E0; border-left: 4px solid #FF9800;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <strong style="color: #E65100;">傭車（外注車両）</strong>
+                <span class="chip orange lighten-1 white-text" style="margin-left: 10px;">傭車</span>
+              </div>
+              <button class="btn-small waves-effect waves-light orange darken-1"
+                      id="selectCharterVehicleBtn"
+                      data-request-id="${request.requestId}">
+                <i class="material-icons left">add_circle</i>
+                傭車を選択
+              </button>
+            </div>
+            <div style="margin-top: 10px; font-size: 0.875rem; color: #666;">
+              <div>車両ナンバー: 999999</div>
+              <div>運転手: 登録時に入力します</div>
+            </div>
+          </div>
+
+          <!-- ★ NEW: 傭車選択時の運転手名入力フォーム（初期は非表示） -->
+          <div id="charterDriverForm" style="display: none; margin-top: 20px;">
+            <div class="card blue-grey lighten-5" style="padding: 20px;">
+              <h6 style="margin-top: 0; color: #424242;">
+                <i class="material-icons left" style="vertical-align: middle;">person</i>
+                傭車の運転手名を入力してください
+              </h6>
+              <div class="input-field" style="margin-top: 15px;">
+                <input type="text" id="charterDriverName" placeholder="例: 山田太郎">
+                <label for="charterDriverName" class="active">運転手名 <span class="red-text">*</span></label>
+              </div>
+              <div style="margin-top: 20px; text-align: right;">
+                <button class="btn waves-effect waves-light grey" id="cancelCharterBtn">
+                  <i class="material-icons left">cancel</i>
+                  キャンセル
+                </button>
+                <button class="btn waves-effect waves-light orange darken-1" id="confirmCharterBtn" data-request-id="${request.requestId}">
+                  <i class="material-icons left">check</i>
+                  傭車を割り当て
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // ★ NEW: 傭車選択ボタンのイベントリスナー
+        const selectCharterBtn = document.getElementById('selectCharterVehicleBtn');
+        if (selectCharterBtn) {
+          selectCharterBtn.addEventListener('click', () => {
+            Utils.toggleElement('charterDriverForm', true);
+            selectCharterBtn.style.display = 'none';
+            // フォームを表示した後、入力フィールドにフォーカス
+            setTimeout(() => {
+              const input = document.getElementById('charterDriverName');
+              if (input) {
+                input.focus();
+                M.updateTextFields();
+              }
+            }, 100);
+          });
+        }
+
+        // ★ NEW: キャンセルボタン
+        const cancelCharterBtn = document.getElementById('cancelCharterBtn');
+        if (cancelCharterBtn) {
+          cancelCharterBtn.addEventListener('click', () => {
+            Utils.toggleElement('charterDriverForm', false);
+            if (selectCharterBtn) selectCharterBtn.style.display = '';
+            document.getElementById('charterDriverName').value = '';
+          });
+        }
+
+        // ★ NEW: 確定ボタン
+        const confirmCharterBtn = document.getElementById('confirmCharterBtn');
+        if (confirmCharterBtn) {
+          confirmCharterBtn.addEventListener('click', () => {
+            const driverName = document.getElementById('charterDriverName').value.trim();
+            if (!driverName) {
+              UI.showError('運転手名を入力してください');
+              return;
+            }
+            const requestId = confirmCharterBtn.dataset.requestId;
+            this.assignCharterVehicle(requestId, driverName);
+          });
+        }
+
         return;
       }
+
+      // ★ 通常の車両リスト表示
       container.innerHTML = vehicles.map(vehicle => `
         <div class="vehicle-item" data-vehicle-number="${vehicle.number}">
           <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -1539,7 +1646,7 @@
               <strong>${vehicle.number}</strong>
               <span class="chip chip-info" style="margin-left: 10px;">${vehicle.vehicleType}</span>
             </div>
-            <button class="btn-small waves-effect waves-light blue darken-1 assign-vehicle-btn" 
+            <button class="btn-small waves-effect waves-light blue darken-1 assign-vehicle-btn"
                     data-vehicle-number="${vehicle.number}"
                     data-request-id="${request.requestId}">
               <i class="material-icons left">check</i>
@@ -1553,7 +1660,7 @@
           </div>
         </div>
       `).join('');
-      
+
       container.querySelectorAll('.assign-vehicle-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -1577,7 +1684,7 @@
           UI.showSuccess('車両を割り当てました');
           this.cancelVehicleSelection();
           // 両方のタブをリフレッシュ
-          await this.loadTodayAssignedRequests();
+          await this.loadAssignedRequestsByDate(this.currentDateOffset);
           await this.loadUnassignedRequests();
         } else {
           UI.showError('車両の割り当てに失敗しました: ' + result.message);
@@ -1586,6 +1693,39 @@
         console.error('Assign vehicle error:', error);
         UI.hideLoading();
         UI.showError('車両の割り当てに失敗しました: ' + error.message);
+      }
+    },
+
+    /**
+     * ★ NEW: 傭車を割り当て（運転手名を指定）
+     * @param {string} requestId - 依頼ID
+     * @param {string} driverName - 運転手名
+     */
+    async assignCharterVehicle(requestId, driverName) {
+      console.log(`[DispatchPlan.assignCharterVehicle] Assigning charter vehicle to ${requestId}, driver: ${driverName}`); // ★ DEBUG LOG
+
+      if (!UI.confirm(`傭車を割り当てますか？\n運転手: ${driverName}`)) {
+        return;
+      }
+
+      try {
+        UI.showLoading('傭車を割り当て中...');
+        const result = await API.assignCharterVehicle(requestId, driverName);
+        UI.hideLoading();
+
+        if (result.success) {
+          UI.showSuccess(`傭車を割り当てました\n運転手: ${driverName}`);
+          this.cancelVehicleSelection();
+          // 両方のタブをリフレッシュ
+          await this.loadAssignedRequestsByDate(this.currentDateOffset);
+          await this.loadUnassignedRequests();
+        } else {
+          UI.showError('傭車の割り当てに失敗しました: ' + result.message);
+        }
+      } catch (error) {
+        console.error('Assign charter vehicle error:', error);
+        UI.hideLoading();
+        UI.showError('傭車の割り当てに失敗しました: ' + error.message);
       }
     },
     

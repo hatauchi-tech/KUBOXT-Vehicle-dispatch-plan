@@ -612,6 +612,63 @@ function assignVehicleToRequest(requestId, vehicleNumber) {
 }
 
 /**
+ * ★★★ NEW: 依頼に傭車を割り当て（運転手名を指定）
+ * @param {string} requestId - 依頼ID
+ * @param {string} driverName - 運転手名
+ * @returns {Object} { success: boolean, message: string }
+ */
+function assignCharterVehicleToRequest(requestId, driverName) {
+  try {
+    logMessage('INFO', `assignCharterVehicleToRequest: 依頼 ${requestId} に傭車を割り当て（運転手: ${driverName}）`);
+
+    if (!isNotEmpty(requestId)) {
+      throw new Error('依頼IDが指定されていません');
+    }
+    if (!isNotEmpty(driverName)) {
+      throw new Error('運転手名が指定されていません');
+    }
+
+    // 依頼データを取得
+    const targetRequest = getRequestById(requestId);
+
+    if (!targetRequest) {
+      return {
+        success: false,
+        message: '指定された依頼が見つかりません'
+      };
+    }
+
+    // ★ 傭車の固定情報
+    const charterVehicleNumber = '999999';
+    const charterRadioNumber = '999';
+    const charterVehicleType = '傭車';
+
+    // 依頼データを更新
+    const sheet = getSheet(SHEET_NAMES.REQUESTS);
+    const rowIndex = targetRequest.rowIndex;
+
+    sheet.getRange(rowIndex, REQUEST_COLUMNS.VEHICLE_NUMBER + 1).setValue(charterVehicleNumber);
+    sheet.getRange(rowIndex, REQUEST_COLUMNS.VEHICLE_PLATE + 1).setValue(charterRadioNumber);
+    sheet.getRange(rowIndex, REQUEST_COLUMNS.VEHICLE_TYPE + 1).setValue(charterVehicleType);
+    sheet.getRange(rowIndex, REQUEST_COLUMNS.DRIVER_NAME + 1).setValue(driverName);
+
+    logMessage('INFO', `assignCharterVehicleToRequest: 傭車割り当て完了（運転手: ${driverName}）`);
+
+    return {
+      success: true,
+      message: SUCCESS_MESSAGES.UPDATE_SUCCESS
+    };
+
+  } catch (error) {
+    logMessage('ERROR', 'assignCharterVehicleToRequest: ' + error.toString());
+    return {
+      success: false,
+      message: ERROR_MESSAGES.SAVE_ERROR + error.message
+    };
+  }
+}
+
+/**
  * 依頼の車両割り当てを解除
  * @param {string} requestId - 依頼ID
  * @returns {Object} { success: boolean, message: string }

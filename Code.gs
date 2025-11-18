@@ -595,6 +595,25 @@ function apiAssignVehicle(requestId, vehicleNumber) {
 }
 
 /**
+ * ★★★ NEW: 依頼に傭車を割り当て（運転手名を指定）
+ * @param {string} requestId - 依頼ID
+ * @param {string} driverName - 運転手名
+ * @returns {Object} { success: boolean, message: string }
+ */
+function apiAssignCharterVehicle(requestId, driverName) {
+  try {
+    const result = assignCharterVehicleToRequest(requestId, driverName);
+    return result;
+  } catch (error) {
+    logMessage('ERROR', 'apiAssignCharterVehicle: ' + error.toString());
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
+/**
  * 依頼の車両割り当てを解除（API）
  * @param {string} requestId - 依頼ID
  * @returns {Object} { success: boolean, message: string }
