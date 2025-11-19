@@ -535,6 +535,45 @@ function apiDeleteRequest(requestId) {
   }
 }
 
+/**
+ * ★★★ NEW: 複数の依頼を一括登録（API）
+ * @param {string} requestsArrayJson - 依頼データ配列のJSON文字列
+ * @returns {Object} { success: boolean, requestIds: Array, message: string }
+ */
+function apiCreateRequestBatch(requestsArrayJson) {
+  try {
+    // JSON文字列をパース
+    const requestsArray = JSON.parse(requestsArrayJson);
+
+    // 各依頼の日付文字列をDateオブジェクトに変換
+    const parsedRequests = requestsArray.map(requestData => {
+      const parsed = { ...requestData };
+      if (parsed.receivedDate) {
+        parsed.receivedDate = new Date(parsed.receivedDate);
+      }
+      if (parsed.loadDate) {
+        parsed.loadDate = new Date(parsed.loadDate);
+      }
+      if (parsed.unloadDate) {
+        parsed.unloadDate = new Date(parsed.unloadDate);
+      }
+      return parsed;
+    });
+
+    // 一括登録を実行
+    const result = createRequestBatch(parsedRequests);
+    return result;
+
+  } catch (error) {
+    logMessage('ERROR', 'apiCreateRequestBatch: ' + error.toString());
+    return {
+      success: false,
+      requestIds: [],
+      message: error.message
+    };
+  }
+}
+
 
 /**
  * 依頼に車両を割り当て（API）
@@ -548,6 +587,25 @@ function apiAssignVehicle(requestId, vehicleNumber) {
     return result;
   } catch (error) {
     logMessage('ERROR', 'apiAssignVehicle: ' + error.toString());
+    return {
+      success: false,
+      message: error.message
+    };
+  }
+}
+
+/**
+ * ★★★ NEW: 依頼に傭車を割り当て（運転手名を指定）
+ * @param {string} requestId - 依頼ID
+ * @param {string} driverName - 運転手名
+ * @returns {Object} { success: boolean, message: string }
+ */
+function apiAssignCharterVehicle(requestId, driverName) {
+  try {
+    const result = assignCharterVehicleToRequest(requestId, driverName);
+    return result;
+  } catch (error) {
+    logMessage('ERROR', 'apiAssignCharterVehicle: ' + error.toString());
     return {
       success: false,
       message: error.message

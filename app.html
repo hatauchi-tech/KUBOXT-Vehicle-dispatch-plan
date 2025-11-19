@@ -38,6 +38,7 @@
     loading: false,
     currentFormMode: 'create',
     currentEditingRequestId: null,
+    requestDetails: [], // ★ NEW: 明細データ（一括登録用）
   };
   
   // ===========================================================================
@@ -121,6 +122,10 @@
       const requestJson = JSON.stringify(requestData);
       return await this.call('apiCreateRequest', requestJson);
     },
+    async createRequestBatch(requestsArray) {
+      const requestsJson = JSON.stringify(requestsArray);
+      return await this.call('apiCreateRequestBatch', requestsJson);
+    },
     async updateRequest(requestData) {
       const requestJson = JSON.stringify(requestData);
       return await this.call('apiUpdateRequest', requestJson);
@@ -130,6 +135,14 @@
     },
     async assignVehicle(requestId, vehicleNumber) {
       return await this.call('apiAssignVehicle', requestId, vehicleNumber);
+    },
+    /**
+     * ★ NEW: 傭車を割り当て（運転手名を指定）
+     * @param {string} requestId - 依頼ID
+     * @param {string} driverName - 運転手名
+     */
+    async assignCharterVehicle(requestId, driverName) {
+      return await this.call('apiAssignCharterVehicle', requestId, driverName);
     },
     async unassignVehicle(requestId) {
       return await this.call('apiUnassignVehicle', requestId);
@@ -595,10 +608,12 @@
       } else {
         AppState.currentFormMode = 'create';
         AppState.currentEditingRequestId = null;
+        AppState.requestDetails = []; // ★ NEW: 新規登録モード時は明細をクリア
       }
       this.setupEventListeners();
       this.setupFormUI();
       await this.populateFormData();
+      this.renderDetailTable(); // ★ NEW: 明細テーブルを初期化
       App.initAutocomplete(); // ★ NEW: ページ遷移時にもAutocompleteを再初期化
     },
     setupFormUI() {
@@ -622,11 +637,13 @@
     async populateFormData() {
       console.log('[RequestForm.populateFormData] Populating selects...'); // ★ DEBUG LOG
       Utils.populateSelect('shipper', AppState.shippers, 'shipperId', 'shipperName', '荷主を選択');
-      Utils.populateSelect('requestType', AppState.requestTypes.map(type => ({
+
+      // ★ NEW: 明細入力用の依頼車種セレクトも初期化
+      Utils.populateSelect('detailRequestType', AppState.requestTypes.map(type => ({
         value: type,
         label: type
       })), 'value', 'label', '依頼車種を選択');
-      
+
       if (AppState.currentFormMode === 'edit') {
         console.log(`[RequestForm.populateFormData] Edit mode: Loading data for ${AppState.currentEditingRequestId}`); // ★ DEBUG LOG
         try {
@@ -680,6 +697,13 @@
         cancelBtn.removeEventListener('click', this.handleCancel);
         cancelBtn.addEventListener('click', () => this.handleCancel());
       }
+
+      // ★ NEW: 明細追加ボタンのイベントリスナー
+      const addDetailBtn = document.getElementById('addDetailBtn');
+      if (addDetailBtn) {
+        addDetailBtn.removeEventListener('click', this.addDetail);
+        addDetailBtn.addEventListener('click', () => this.addDetail());
+      }
     },
     async handleSubmit(e) {
       e.preventDefault();
@@ -692,6 +716,7 @@
       }
       try {
         if (AppState.currentFormMode === 'edit') {
+          // 編集モードでは従来通り単一更新（明細機能は使用しない）
           console.log('[RequestForm.handleSubmit] Updating request...'); // ★ DEBUG LOG
           UI.showLoading('依頼を更新中...');
           const result = await API.updateRequest(formData);
@@ -703,13 +728,26 @@
             UI.showError('依頼の更新に失敗しました: ' + result.message);
           }
         } else {
-          console.log('[RequestForm.handleSubmit] Creating new request...'); // ★ DEBUG LOG
-          UI.showLoading('依頼を登録中...');
-          const result = await API.createRequest(formData);
+          // ★ NEW: 新規登録時は一括登録APIを使用
+          console.log('[RequestForm.handleSubmit] Creating batch requests...', AppState.requestDetails.length); // ★ DEBUG LOG
+          UI.showLoading(`${AppState.requestDetails.length}件の依頼を登録中...`);
+
+          // 基本情報 + 各明細の組み合わせで依頼データ配列を作成
+          const requestsArray = AppState.requestDetails.map(detail => ({
+            ...formData,
+            productName: detail.productName,
+            requestType: detail.requestType
+          }));
+
+          const result = await API.createRequestBatch(requestsArray);
           UI.hideLoading();
+
           if (result.success) {
-            UI.showSuccess('依頼を登録しました (ID: ' + result.requestId + ')');
+            const requestIds = result.requestIds || [];
+            UI.showSuccess(`${requestIds.length}件の依頼を登録しました\n最初のID: ${requestIds[0]}\n最後のID: ${requestIds[requestIds.length - 1]}`);
             Utils.clearForm('requestForm');
+            AppState.requestDetails = []; // 明細をクリア
+            this.renderDetailTable(); // テーブルを再描画
             this.setupFormUI();
             this.populateFormData();
           } else {
@@ -731,12 +769,11 @@
         loadTime: document.getElementById('loadTime').value,
         loadPlace1: document.getElementById('loadPlace1').value,
         loadPlace2: document.getElementById('loadPlace2').value,
-        productName: document.getElementById('productName').value,
         unloadDate: document.getElementById('unloadDate').value,
         unloadTime: document.getElementById('unloadTime').value,
         unloadPlace1: document.getElementById('unloadPlace1').value,
-        unloadPlace2: document.getElementById('unloadPlace2').value,
-        requestType: document.getElementById('requestType').value
+        unloadPlace2: document.getElementById('unloadPlace2').value
+        // ★ NOTE: productName と requestType は明細入力に移動したため削除
       };
       console.log('[RequestForm.getFormData]', data); // ★ DEBUG LOG
       return data;
@@ -746,10 +783,9 @@
       if (!formData.shipper) errors.push('荷主を選択してください');
       if (!formData.loadDate) errors.push('積込日を入力してください');
       if (!formData.loadPlace1) errors.push('積込地1を入力してください');
-      if (!formData.productName) errors.push('品名を入力してください');
       if (!formData.unloadDate) errors.push('荷卸日を入力してください');
       if (!formData.unloadPlace1) errors.push('荷卸地1を入力してください');
-      if (!formData.requestType) errors.push('依頼車種を選択してください');
+      // ★ NOTE: productName と requestType は明細入力時にバリデーション
       if (formData.loadDate && formData.unloadDate) {
         const error = Validator.dateRange(
           formData.loadDate,
@@ -759,6 +795,12 @@
         );
         if (error) errors.push(error);
       }
+
+      // ★ NEW: 明細が1件以上登録されているかチェック
+      if (AppState.requestDetails.length === 0) {
+        errors.push('明細を1件以上登録してください');
+      }
+
       return errors;
     },
     handleCancel() {
@@ -769,8 +811,88 @@
       } else {
         if (UI.confirm('入力内容をクリアしますか?')) {
           Utils.clearForm('requestForm');
+          AppState.requestDetails = []; // ★ NEW: 明細もクリア
+          this.renderDetailTable(); // ★ NEW: テーブルを再描画
           this.populateFormData();
         }
+      }
+    },
+
+    // ★★★ NEW: 明細管理関数 ★★★
+    addDetail() {
+      const requestType = document.getElementById('detailRequestType').value;
+      const productName = document.getElementById('detailProductName').value.trim();
+
+      // バリデーション
+      if (!requestType) {
+        UI.showError('依頼車種を選択してください');
+        return;
+      }
+      if (!productName) {
+        UI.showError('品名を入力してください');
+        return;
+      }
+
+      // 明細を追加
+      AppState.requestDetails.push({
+        requestType: requestType,
+        productName: productName
+      });
+
+      // 入力フィールドをクリア
+      document.getElementById('detailRequestType').value = '';
+      document.getElementById('detailProductName').value = '';
+      M.FormSelect.init(document.querySelectorAll('select'));
+      M.updateTextFields();
+
+      // テーブルを再描画
+      this.renderDetailTable();
+
+      console.log('[RequestForm.addDetail] Detail added:', AppState.requestDetails);
+    },
+
+    removeDetail(index) {
+      if (UI.confirm('この明細を削除しますか?')) {
+        AppState.requestDetails.splice(index, 1);
+        this.renderDetailTable();
+        console.log('[RequestForm.removeDetail] Detail removed. Remaining:', AppState.requestDetails);
+      }
+    },
+
+    renderDetailTable() {
+      const tableBody = document.getElementById('detailTableBody');
+      const table = document.getElementById('detailTable');
+      const noDetailMessage = document.getElementById('noDetailMessage');
+      const detailCount = document.getElementById('detailCount');
+
+      if (!tableBody || !table || !noDetailMessage || !detailCount) return;
+
+      // 件数を更新
+      detailCount.textContent = AppState.requestDetails.length;
+
+      if (AppState.requestDetails.length === 0) {
+        // 明細がない場合
+        table.style.display = 'none';
+        noDetailMessage.style.display = 'block';
+        tableBody.innerHTML = '';
+      } else {
+        // 明細がある場合
+        table.style.display = 'table';
+        noDetailMessage.style.display = 'none';
+
+        // テーブル行を生成
+        tableBody.innerHTML = AppState.requestDetails.map((detail, index) => `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${detail.requestType}</td>
+            <td>${detail.productName}</td>
+            <td class="center-align">
+              <button type="button" class="btn-small red waves-effect waves-light" onclick="RequestForm.removeDetail(${index})">
+                <i class="material-icons">delete</i>
+              </button>
+            </td>
+          </tr>
+        `).join('');
       }
     }
   };
@@ -936,17 +1058,21 @@
   const DispatchPlan = {
     async init() {
       console.log('[DispatchPlan.init] Initializing...'); // ★ DEBUG LOG
+      this.currentGroupBy = 'vehicle'; // ★ NEW: 現在のグルーピング軸を保持
+      this.currentDateOffset = 0; // ★ NEW: 現在の日付オフセットを保持
+      this.currentRequests = []; // ★ NEW: 現在の依頼データを保持
+
       this.setupEventListeners();
       this.populateFilters();
-      
+
       UI.showLoading('依頼データを読み込み中...');
       try {
         console.log('[DispatchPlan.init] Awaiting this.loadUnassignedRequests...'); // ★ DEBUG LOG
         await this.loadUnassignedRequests(); // ★ MOD: 分離
-        
-        console.log('[DispatchPlan.init] Awaiting this.loadTodayAssignedRequests...'); // ★ DEBUG LOG
-        await this.loadTodayAssignedRequests();
-        
+
+        console.log('[DispatchPlan.init] Awaiting this.loadAssignedRequestsByDate...'); // ★ DEBUG LOG
+        await this.loadAssignedRequestsByDate(0); // ★ MOD: デフォルトで本日を表示
+
       } catch (error) {
         console.error('[DispatchPlan.init] Load requests error:', error); // ★ DEBUG LOG
         UI.showError('依頼データの読み込みに失敗しました');
@@ -956,101 +1082,214 @@
     },
 
     /**
-     * 当日の配車確定データを読み込む
+     * ★ NEW: 指定された日付の配車確定データを読み込む
+     * @param {number} dateOffset - 日付のオフセット (0=本日, -1=昨日, -2=一昨日)
      */
-    async loadTodayAssignedRequests() {
-      const todayString = Utils.getToday();
-      console.log(`[DispatchPlan.loadToday] Loading for date: ${todayString}`); // ★ DEBUG LOG
-      
-      const todayDateElem = document.getElementById('todayDateStr');
-      if (todayDateElem) {
-        todayDateElem.textContent = Utils.formatDateJP(todayString);
+    async loadAssignedRequestsByDate(dateOffset = 0) {
+      // 日付を計算
+      const targetDate = new Date();
+      targetDate.setDate(targetDate.getDate() + dateOffset);
+      const targetDateString = Utils.formatDate(targetDate);
+
+      console.log(`[DispatchPlan.loadAssignedRequestsByDate] Loading for offset: ${dateOffset}, date: ${targetDateString}`); // ★ DEBUG LOG
+
+      // ★ NEW: 現在の日付オフセットを保持
+      this.currentDateOffset = dateOffset;
+
+      // 日付ラベルと表示を更新
+      const dateLabelMap = {
+        0: '本日',
+        '-1': '昨日',
+        '-2': '一昨日'
+      };
+      const dateLabel = dateLabelMap[dateOffset] || `${dateOffset}日前`;
+
+      const selectedDateLabelElem = document.getElementById('selectedDateLabel');
+      if (selectedDateLabelElem) {
+        selectedDateLabelElem.textContent = dateLabel;
       }
 
+      const todayDateElem = document.getElementById('todayDateStr');
+      if (todayDateElem) {
+        todayDateElem.textContent = Utils.formatDateJP(targetDateString);
+      }
+
+      // ボタンのアクティブ状態を更新
+      this.updateDateButtonStates(dateOffset);
+
       try {
-        const requests = await API.getAssignedRequestsByDate(todayString);
-        console.log(`[DispatchPlan.loadToday] Received ${requests.length} assigned requests`); // ★ DEBUG LOG
-        this.renderTodayAssignedRequests(requests);
+        const requests = await API.getAssignedRequestsByDate(targetDateString);
+        console.log(`[DispatchPlan.loadAssignedRequestsByDate] Received ${requests.length} assigned requests`); // ★ DEBUG LOG
+
+        // ★ NEW: 現在の依頼データを保持
+        this.currentRequests = requests;
+
+        // 現在のグルーピング軸で表示
+        this.renderTodayAssignedRequests(requests, this.currentGroupBy);
       } catch (error) {
-        console.error('[DispatchPlan.loadToday] Load today assigned requests error:', error); // ★ DEBUG LOG
-        UI.showError('当日の配車計画の読み込みに失敗しました');
+        console.error('[DispatchPlan.loadAssignedRequestsByDate] Load assigned requests error:', error); // ★ DEBUG LOG
+        UI.showError('配車計画の読み込みに失敗しました');
         const container = document.getElementById('todayAssignedRequests');
         if (container) {
           container.innerHTML = '<p class="text-center text-error">データの読み込みに失敗しました</p>';
         }
       }
     },
+
+    /**
+     * ★ NEW: 日付選択ボタンのアクティブ状態を更新
+     * @param {number} activeOffset - アクティブにするボタンのオフセット
+     */
+    updateDateButtonStates(activeOffset) {
+      const buttons = [
+        { id: 'showDayBeforeYesterdayBtn', offset: -2 },
+        { id: 'showYesterdayBtn', offset: -1 },
+        { id: 'showTodayBtn', offset: 0 }
+      ];
+
+      buttons.forEach(btn => {
+        const element = document.getElementById(btn.id);
+        if (element) {
+          if (btn.offset === activeOffset) {
+            element.classList.remove('grey', 'lighten-1');
+            element.classList.add('blue', 'darken-1');
+          } else {
+            element.classList.remove('blue', 'darken-1');
+            element.classList.add('grey', 'lighten-1');
+          }
+        }
+      });
+    },
     
     /**
-     * 当日の配車確定データを描画する
+     * ★ MOD: 当日の配車確定データを描画する（アコーディオン対応＆グルーピング対応）
+     * @param {Array} requests - 依頼データの配列
+     * @param {string} groupBy - グルーピング軸 ('vehicle', 'driver', 'vehicleType', 'shipper')
      */
-    renderTodayAssignedRequests(requests) {
-      console.log(`[DispatchPlan.renderToday] Rendering ${requests.length} requests.`); // ★ DEBUG LOG
+    renderTodayAssignedRequests(requests, groupBy = 'vehicle') {
+      console.log(`[DispatchPlan.renderToday] Rendering ${requests.length} requests with groupBy: ${groupBy}`); // ★ DEBUG LOG
       const container = document.getElementById('todayAssignedRequests');
       if (!container) {
          console.error('[DispatchPlan.renderToday] Container #todayAssignedRequests not found!'); // ★ DEBUG LOG
          return;
       }
-      
+
       if (requests.length === 0) {
-        container.innerHTML = '<p class="text-center text-secondary">本日の配車確定済み依頼はありません</p>';
+        container.innerHTML = '<p class="text-center text-secondary">配車確定済み依頼はありません</p>';
         return;
       }
-      
-      // 車両ごとにグループ化
-      const groupedByVehicle = requests.reduce((acc, req) => {
-        const key = req.vehicleNumber || 'unknown';
+
+      // ★ NEW: グルーピング軸に応じてグループ化
+      const groupConfig = {
+        vehicle: {
+          keyField: 'vehicleNumber',
+          displayName: (req) => `${req.vehicleNumber || '未設定'} (${req.driverName || '未設定'})`,
+          badge: (req) => req.vehicleType || '-',
+          icon: 'local_shipping'
+        },
+        driver: {
+          keyField: 'driverName',
+          displayName: (req) => req.driverName || '未設定',
+          badge: (req) => `${req.vehicleNumber || '-'} / ${req.vehicleType || '-'}`,
+          icon: 'person'
+        },
+        vehicleType: {
+          keyField: 'vehicleType',
+          displayName: (req) => req.vehicleType || '未設定',
+          badge: (req) => '',
+          icon: 'directions_car'
+        },
+        shipper: {
+          keyField: 'shipper',
+          displayName: (req) => req.shipper || '未設定',
+          badge: (req) => '',
+          icon: 'business'
+        }
+      };
+
+      const config = groupConfig[groupBy] || groupConfig.vehicle;
+
+      // グループ化
+      const grouped = requests.reduce((acc, req) => {
+        const key = req[config.keyField] || 'unknown';
         if (!acc[key]) {
           acc[key] = {
-            driverName: req.driverName,
-            vehicleType: req.vehicleType,
+            displayName: config.displayName(req),
+            badge: config.badge(req),
+            icon: config.icon,
             requests: []
           };
         }
         acc[key].requests.push(req);
         return acc;
       }, {});
-      
-      // 時間でソート
-      for (const vehicle in groupedByVehicle) {
-        groupedByVehicle[vehicle].requests = Utils.sortArray(groupedByVehicle[vehicle].requests, 'loadTime', true);
+
+      // 各グループ内で時間でソート
+      for (const groupKey in grouped) {
+        grouped[groupKey].requests = Utils.sortArray(grouped[groupKey].requests, 'loadTime', true);
       }
-      
-      // HTMLを構築
-      container.innerHTML = Object.entries(groupedByVehicle).map(([vehicleNumber, data]) => {
-        return `
-          <div class="card vehicle-plan-card">
-            <div class="card-content">
-              <div class="card-title" style="font-size: 1.25rem; color: #1976D2; margin-bottom: 10px;">
-                <i class="material-icons left">local_shipping</i>
-                ${vehicleNumber} (${data.driverName || '未設定'})
-                <span class="chip chip-info right">${data.vehicleType}</span>
+
+      // ★ NEW: アコーディオン形式のHTMLを構築（グルーピング対応）
+      const accordionHtml = `
+        <ul class="collapsible" id="vehicleAccordion">
+          ${Object.entries(grouped).map(([groupKey, data]) => `
+            <li class="active">
+              <div class="collapsible-header" style="display: flex; justify-content: space-between; align-items: center; background-color: #E3F2FD;">
+                <div style="flex: 1;">
+                  <i class="material-icons" style="color: #1976D2;">${data.icon}</i>
+                  <strong style="font-size: 1.1rem; color: #1976D2;">${data.displayName}</strong>
+                  ${data.badge ? `<span class="chip chip-info" style="margin-left: 10px;">${data.badge}</span>` : ''}
+                </div>
+                <div>
+                  <span class="badge blue white-text" style="margin-right: 10px;">${data.requests.length} 件</span>
+                </div>
               </div>
-              
-              ${data.requests.map(req => `
-                <div class="request-plan-item">
-                  <div class="request-plan-time">${Utils.formatTime(req.loadTime) || '時間未定'}</div>
-                  <div class="request-plan-details">
-                    <strong>${req.shipper}</strong> - ${req.productName}
-                    <div class="request-info">
-                      積: ${req.loadPlace1}
-                      <span class="right">卸: ${req.unloadPlace1}</span>
+              <div class="collapsible-body" style="padding: 15px; background-color: #FAFAFA;">
+                ${data.requests.map(req => `
+                  <div class="request-plan-item" style="border-bottom: 1px solid #E0E0E0; padding: 12px 0; margin: 0;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                      <div style="flex: 0 0 80px;">
+                        <div class="request-plan-time" style="font-size: 1.1rem; font-weight: bold; color: #1976D2;">
+                          ${Utils.formatTime(req.loadTime) || '時間未定'}
+                        </div>
+                      </div>
+                      <div style="flex: 1; margin: 0 15px;">
+                        <div class="request-plan-details">
+                          <div style="margin-bottom: 5px;">
+                            <strong style="font-size: 1rem;">${req.shipper}</strong> - ${req.productName}
+                            ${groupBy !== 'vehicle' ? `<div style="font-size: 0.85rem; color: #999; margin-top: 3px;">${req.vehicleNumber || '未配車'} (${req.driverName || '-'})</div>` : ''}
+                          </div>
+                          <div class="request-info" style="font-size: 0.9rem; color: #666;">
+                            <div>積: ${req.loadPlace1}</div>
+                            <div>卸: ${req.unloadPlace1}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div style="flex: 0 0 auto;">
+                        <button class="btn-small waves-effect waves-light amber darken-3 unassign-btn"
+                                data-request-id="${req.requestId}"
+                                title="配車を解除する">
+                          <i class="material-icons">undo</i>
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <div class="request-plan-action">
-                    <button class="btn-small waves-effect waves-light amber darken-3 unassign-btn" 
-                            data-request-id="${req.requestId}" 
-                            title="配車を解除する">
-                      <i class="material-icons">undo</i>
-                    </button>
-                  </div>
-                </div>
-              `).join('')}
-              
-            </div>
-          </div>
-        `;
-      }).join('');
+                `).join('')}
+              </div>
+            </li>
+          `).join('')}
+        </ul>
+      `;
+
+      container.innerHTML = accordionHtml;
+
+      // ★ NEW: Collapsibleを初期化（すべて展開状態で）
+      setTimeout(() => {
+        const elems = document.querySelectorAll('#vehicleAccordion');
+        M.Collapsible.init(elems, {
+          accordion: false // falseにすることで複数同時展開可能
+        });
+      }, 100);
     },
 
     populateFilters() {
@@ -1114,9 +1353,37 @@
       // 当日タブ
       const reloadTodayBtn = document.getElementById('reloadTodayPlanBtn');
       if (reloadTodayBtn) {
-        reloadTodayBtn.addEventListener('click', () => this.loadTodayAssignedRequests());
+        reloadTodayBtn.addEventListener('click', () => this.loadAssignedRequestsByDate(this.currentDateOffset));
       }
-      
+
+      // ★ NEW: 日付選択ボタン
+      const showTodayBtn = document.getElementById('showTodayBtn');
+      const showYesterdayBtn = document.getElementById('showYesterdayBtn');
+      const showDayBeforeYesterdayBtn = document.getElementById('showDayBeforeYesterdayBtn');
+
+      if (showTodayBtn) {
+        showTodayBtn.addEventListener('click', () => this.loadAssignedRequestsByDate(0));
+      }
+      if (showYesterdayBtn) {
+        showYesterdayBtn.addEventListener('click', () => this.loadAssignedRequestsByDate(-1));
+      }
+      if (showDayBeforeYesterdayBtn) {
+        showDayBeforeYesterdayBtn.addEventListener('click', () => this.loadAssignedRequestsByDate(-2));
+      }
+
+      // ★ NEW: グルーピング選択
+      const groupBySelect = document.getElementById('planGroupBy');
+      if (groupBySelect) {
+        groupBySelect.addEventListener('change', (e) => {
+          this.currentGroupBy = e.target.value;
+          this.renderTodayAssignedRequests(this.currentRequests, this.currentGroupBy);
+        });
+        // Materialize CSS select初期化
+        setTimeout(() => {
+          M.FormSelect.init(groupBySelect);
+        }, 100);
+      }
+
       const todayContainer = document.getElementById('todayAssignedRequests');
       if (todayContainer) {
         todayContainer.addEventListener('click', (e) => {
@@ -1257,7 +1524,7 @@
             </h6>
             <p style="margin: 5px 0;"><strong>荷主:</strong> ${request.shipper}</p>
             <p style="margin: 5px 0;"><strong>品名:</strong> ${request.productName}</p>
-            <p style="margin: 5px 0;"><strong>積込:</strong> ${Utils.formatDateJP(request.loadDate)} ${Utils.formatTime(req.loadTime) || ''}</p>
+            <p style="margin: 5px 0;"><strong>積込:</strong> ${Utils.formatDateJP(request.loadDate)} ${Utils.formatTime(request.loadTime) || ''}</p>
             <p style="margin: 5px 0;"><strong>荷卸:</strong> ${Utils.formatDateJP(request.unloadDate)} ${Utils.formatTime(request.unloadTime) || ''}</p>
             <p style="margin: 5px 0;"><strong>依頼車種:</strong> <span class="chip chip-info">${request.requestType}</span></p>
           </div>
@@ -1269,10 +1536,109 @@
       console.log(`[DispatchPlan.renderAvailableVehicles] Rendering ${vehicles.length} vehicles`); // ★ DEBUG LOG
       const container = document.getElementById('availableVehicles');
       if (!container) return;
+
+      // ★ MOD: 車両がない場合は傭車を表示
       if (vehicles.length === 0) {
-        container.innerHTML = '<p class="text-center text-secondary">この依頼に割り当て可能な車両がありません</p>';
+        container.innerHTML = `
+          <div class="card orange lighten-5" style="padding: 15px; margin-bottom: 15px;">
+            <p style="margin: 0 0 10px 0; color: #E65100;">
+              <i class="material-icons left" style="vertical-align: middle;">info</i>
+              <strong>割り当て可能な自社車両がありません</strong>
+            </p>
+            <p style="margin: 0; font-size: 0.9rem; color: #666;">
+              傭車（外注車両）を利用する場合は、下のボタンから登録してください。
+            </p>
+          </div>
+
+          <div class="vehicle-item" style="background-color: #FFF3E0; border-left: 4px solid #FF9800;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <strong style="color: #E65100;">傭車（外注車両）</strong>
+                <span class="chip orange lighten-1 white-text" style="margin-left: 10px;">傭車</span>
+              </div>
+              <button class="btn-small waves-effect waves-light orange darken-1"
+                      id="selectCharterVehicleBtn"
+                      data-request-id="${request.requestId}">
+                <i class="material-icons left">add_circle</i>
+                傭車を選択
+              </button>
+            </div>
+            <div style="margin-top: 10px; font-size: 0.875rem; color: #666;">
+              <div>車両ナンバー: 999999</div>
+              <div>運転手: 登録時に入力します</div>
+            </div>
+          </div>
+
+          <!-- ★ NEW: 傭車選択時の運転手名入力フォーム（初期は非表示） -->
+          <div id="charterDriverForm" style="display: none; margin-top: 20px;">
+            <div class="card blue-grey lighten-5" style="padding: 20px;">
+              <h6 style="margin-top: 0; color: #424242;">
+                <i class="material-icons left" style="vertical-align: middle;">person</i>
+                傭車の運転手名を入力してください
+              </h6>
+              <div class="input-field" style="margin-top: 15px;">
+                <input type="text" id="charterDriverName" placeholder="例: 山田太郎">
+                <label for="charterDriverName" class="active">運転手名 <span class="red-text">*</span></label>
+              </div>
+              <div style="margin-top: 20px; text-align: right;">
+                <button class="btn waves-effect waves-light grey" id="cancelCharterBtn">
+                  <i class="material-icons left">cancel</i>
+                  キャンセル
+                </button>
+                <button class="btn waves-effect waves-light orange darken-1" id="confirmCharterBtn" data-request-id="${request.requestId}">
+                  <i class="material-icons left">check</i>
+                  傭車を割り当て
+                </button>
+              </div>
+            </div>
+          </div>
+        `;
+
+        // ★ NEW: 傭車選択ボタンのイベントリスナー
+        const selectCharterBtn = document.getElementById('selectCharterVehicleBtn');
+        if (selectCharterBtn) {
+          selectCharterBtn.addEventListener('click', () => {
+            Utils.toggleElement('charterDriverForm', true);
+            selectCharterBtn.style.display = 'none';
+            // フォームを表示した後、入力フィールドにフォーカス
+            setTimeout(() => {
+              const input = document.getElementById('charterDriverName');
+              if (input) {
+                input.focus();
+                M.updateTextFields();
+              }
+            }, 100);
+          });
+        }
+
+        // ★ NEW: キャンセルボタン
+        const cancelCharterBtn = document.getElementById('cancelCharterBtn');
+        if (cancelCharterBtn) {
+          cancelCharterBtn.addEventListener('click', () => {
+            Utils.toggleElement('charterDriverForm', false);
+            if (selectCharterBtn) selectCharterBtn.style.display = '';
+            document.getElementById('charterDriverName').value = '';
+          });
+        }
+
+        // ★ NEW: 確定ボタン
+        const confirmCharterBtn = document.getElementById('confirmCharterBtn');
+        if (confirmCharterBtn) {
+          confirmCharterBtn.addEventListener('click', () => {
+            const driverName = document.getElementById('charterDriverName').value.trim();
+            if (!driverName) {
+              UI.showError('運転手名を入力してください');
+              return;
+            }
+            const requestId = confirmCharterBtn.dataset.requestId;
+            this.assignCharterVehicle(requestId, driverName);
+          });
+        }
+
         return;
       }
+
+      // ★ 通常の車両リスト表示
       container.innerHTML = vehicles.map(vehicle => `
         <div class="vehicle-item" data-vehicle-number="${vehicle.number}">
           <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -1280,7 +1646,7 @@
               <strong>${vehicle.number}</strong>
               <span class="chip chip-info" style="margin-left: 10px;">${vehicle.vehicleType}</span>
             </div>
-            <button class="btn-small waves-effect waves-light blue darken-1 assign-vehicle-btn" 
+            <button class="btn-small waves-effect waves-light blue darken-1 assign-vehicle-btn"
                     data-vehicle-number="${vehicle.number}"
                     data-request-id="${request.requestId}">
               <i class="material-icons left">check</i>
@@ -1294,7 +1660,7 @@
           </div>
         </div>
       `).join('');
-      
+
       container.querySelectorAll('.assign-vehicle-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -1318,7 +1684,7 @@
           UI.showSuccess('車両を割り当てました');
           this.cancelVehicleSelection();
           // 両方のタブをリフレッシュ
-          await this.loadTodayAssignedRequests();
+          await this.loadAssignedRequestsByDate(this.currentDateOffset);
           await this.loadUnassignedRequests();
         } else {
           UI.showError('車両の割り当てに失敗しました: ' + result.message);
@@ -1327,6 +1693,39 @@
         console.error('Assign vehicle error:', error);
         UI.hideLoading();
         UI.showError('車両の割り当てに失敗しました: ' + error.message);
+      }
+    },
+
+    /**
+     * ★ NEW: 傭車を割り当て（運転手名を指定）
+     * @param {string} requestId - 依頼ID
+     * @param {string} driverName - 運転手名
+     */
+    async assignCharterVehicle(requestId, driverName) {
+      console.log(`[DispatchPlan.assignCharterVehicle] Assigning charter vehicle to ${requestId}, driver: ${driverName}`); // ★ DEBUG LOG
+
+      if (!UI.confirm(`傭車を割り当てますか？\n運転手: ${driverName}`)) {
+        return;
+      }
+
+      try {
+        UI.showLoading('傭車を割り当て中...');
+        const result = await API.assignCharterVehicle(requestId, driverName);
+        UI.hideLoading();
+
+        if (result.success) {
+          UI.showSuccess(`傭車を割り当てました\n運転手: ${driverName}`);
+          this.cancelVehicleSelection();
+          // 両方のタブをリフレッシュ
+          await this.loadAssignedRequestsByDate(this.currentDateOffset);
+          await this.loadUnassignedRequests();
+        } else {
+          UI.showError('傭車の割り当てに失敗しました: ' + result.message);
+        }
+      } catch (error) {
+        console.error('Assign charter vehicle error:', error);
+        UI.hideLoading();
+        UI.showError('傭車の割り当てに失敗しました: ' + error.message);
       }
     },
     

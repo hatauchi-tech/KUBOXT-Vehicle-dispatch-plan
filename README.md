@@ -4,9 +4,9 @@
 [![Materialize CSS](https://img.shields.io/badge/Materialize-ee6e73?style=flat&logo=materialdesign&logoColor=white)](https://materializecss.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-物流・運送業向けのWebベース配車管理システムです。Google Apps ScriptとGoogle Spreadsheetを使用して、配送依頼の登録から車両割り当て、運転手への自動通知まで一元管理できます。
+物流・運送業向けのWebベース配車管理システムです。Google Apps Script (GAS) とGoogle Spreadsheetをデータベースとして使用し、配送依頼の登録から車両割り当て、運転手への自動通知まで一元管理できます。完全Webベースで動作し、サーバー構築不要で導入できます。
 
-![App Version](https://img.shields.io/badge/version-1.0.0-blue)
+![App Version](https://img.shields.io/badge/version-3.3-blue)
 
 ---
 
@@ -26,35 +26,44 @@
 
 ## 🚀 機能
 
-### 1. 依頼登録 (SCR-01)
-- 荷主からの配送依頼を登録
-- 積込・荷卸の詳細情報入力
-- 依頼車種の指定
-- リアルタイムバリデーション
+### 1. 依頼登録・編集 (SCR-01)
+- **新規登録**: 荷主からの配送依頼を登録
+- **編集モード**: 既存依頼の内容を修正
+- **削除機能**: 不要な依頼を削除（依頼一覧画面から）
+- **積込・荷卸の詳細情報入力**: 日付、時間、場所1・場所2、品名
+- **依頼車種の指定**: 大型、中型などの車種を選択
+- **リアルタイムバリデーション**: 必須項目チェック、日付整合性確認
+- **住所オートコンプリート** (v3.3新機能): 過去の入力履歴から自動補完
+- **荷主別お気に入り機能** (v3.3新機能): 荷主選択時に最頻値を自動表示
 
 ### 2. 依頼一覧 (SCR-02)
-- 登録済み依頼の一覧表示
-- 多様なフィルタリング機能
-  - 積込日（期間指定）
-  - 荷主別
-  - ステータス別（配車済/未配車）
-- ソート・検索機能
+- **一覧表示**: 登録済み依頼をテーブル形式で表示
+- **多様なフィルタリング機能**:
+  - 積込日（期間指定: 開始日〜終了日）
+  - 荷主別フィルター
+  - ステータス別（配車済/未配車/すべて）
+- **アクション**: 各行から編集・削除ボタンで直接操作
+- **ステータス表示**: チップで配車済/未配車を色分け表示
+- **件数表示**: フィルター適用後の件数をリアルタイム表示
 
 ### 3. 配車計画 (SCR-03)
-- 未配車依頼の視覚的表示
-- **インテリジェント車両マッチング**
-  - 車種適合チェック
+- **2タブ構成**:
+  - **当日の配送計画タブ**: 本日の配車確定済み依頼を車両ごとに表示
+  - **当日以降の積み込み計画タブ**: 未配車依頼を一覧表示し、車両を割り当て
+- **インテリジェント車両マッチング**:
+  - 車種適合チェック（車両マスタの「対応可能依頼」との照合）
   - 稼働状況の自動確認
-  - 期間重複の検出
-- ワンクリック車両割り当て
-- タブ切替（当日配送計画 / 今後の積込計画）
+  - 期間重複の検出（積込日〜荷卸日の範囲で重複チェック）
+- **ワンクリック車両割り当て**: 利用可能な車両のみ表示し、ボタン一つで割り当て
+- **配車解除機能**: 当日タブから配車を解除し、未配車に戻す
 
 ### 4. 日次通知バッチ
-- 翌日の配車計画を自動メール送信
-- 運転手ごとに集計・分類
-- PDF形式の配車計画書を添付
-- HTML形式の見やすいメール本文
-- 毎日18:00に自動実行（カスタマイズ可能）
+- **翌日の配車計画を自動メール送信**: 毎日18:00に実行（Config.gsでカスタマイズ可能）
+- **運転手ごとに集計・分類**: 車両ナンバー単位で依頼を集約
+- **PDF形式の配車計画書を添付**: HTMLからPDF生成し、メールに添付
+- **HTML形式の見やすいメール本文**: テーブル形式で業務内容を表示
+- **車両マスタのメールアドレス使用**: M_車両シートのメールアドレス列から送信先を取得
+- **トリガー管理関数付き**: `setupDailyNotificationTrigger()` / `removeDailyNotificationTrigger()`
 
 ---
 
@@ -72,9 +81,14 @@
 - **Google Fonts** - タイポグラフィ
 
 ### アーキテクチャパターン
-- **SPA (Single Page Application)** - ページ遷移なしの快適なUX
-- **MVC風の構造** - Model(DataHandler) / View(HTML) / Controller(Code.gs, app.js)
-- **RESTful API風の設計** - 統一されたレスポンス形式
+- **SPA (Single Page Application)** - ページ遷移なしの快適なUX、`getPageContent()`による動的HTML読み込み
+- **レイヤードアーキテクチャ**:
+  - **Presentation Layer** (app.html): ナビゲーション、UI制御、ページモジュール
+  - **API Layer** (Code.gs): エントリーポイント、APIエンドポイント群
+  - **Business Logic Layer** (DataHandler.gs): CRUD操作、ビジネスロジック
+  - **Utility Layer** (Utils.gs): 共通関数、バリデーション
+  - **Data Layer** (Google Spreadsheet): データ永続化
+- **統一されたAPIレスポンス形式**: `{ success: boolean, data: any, message: string }`
 
 ---
 
@@ -145,24 +159,63 @@
 
 ### データフロー
 
+#### 1. ページ遷移フロー (SPA)
 ```
-[ユーザー操作]
+[ユーザーがナビリンクをクリック]
     ↓
-[app.js - イベント処理]
+[Navigation.navigateToPage(pageName, state)]
     ↓
-[API.call() - google.script.run]
+[google.script.run.getPageContent(pageName)]
     ↓
-[Code.gs - apiXXX() 関数]
+[Code.gs - getPageContent() 関数]
     ↓
-[DataHandler.gs - データ操作]
+[HtmlService.createTemplateFromFile(pageName + '-content')]
     ↓
-[Utils.gs - ユーティリティ]
+[HTMLコンテンツを返却]
     ↓
-[Google Spreadsheet - CRUD]
+[#page-content に HTML を挿入]
     ↓
-[レスポンス: { success, data, message }]
+[App.initPage(state) でページ初期化]
     ↓
-[app.js - UI更新]
+[Materialize CSS コンポーネント初期化]
+```
+
+#### 2. データ操作フロー
+```
+[ユーザー操作（フォーム送信、ボタンクリック等）]
+    ↓
+[app.html - イベントハンドラー（RequestForm, RequestList, DispatchPlan）]
+    ↓
+[API.call(functionName, ...args) - Promise ベース]
+    ↓
+[google.script.run.apiXXX(...args)]
+    ↓
+[Code.gs - apiXXX() 関数（APIエンドポイント）]
+    ↓
+[DataHandler.gs - ビジネスロジック・CRUD操作]
+    ├─ getAllRequests() / getUnassignedRequests()
+    ├─ createRequest() / updateRequest() / deleteRequest()
+    ├─ assignVehicleToRequest() / unassignVehicleFromRequest()
+    └─ getAvailableVehiclesForRequest() (車種・期間チェック)
+    ↓
+[Utils.gs - 補助関数]
+    ├─ getSpreadsheet() / getSheet() / getSheetData()
+    ├─ validateRequestData()
+    ├─ formatDate() / formatTime()
+    ├─ isDateRangeOverlapping() (期間重複チェック)
+    └─ generateRequestId() (採番)
+    ↓
+[Google Spreadsheet - データ読み書き]
+    ├─ T_荷主依頼データ
+    ├─ M_車両
+    └─ M_荷主マスタ
+    ↓
+[レスポンス: { success: boolean, data: any, message: string }]
+    ↓
+[app.html - Promise 解決後の処理]
+    ├─ UI.showSuccess() / UI.showError() (トースト通知)
+    ├─ UI.showLoading() / UI.hideLoading() (ローディング表示)
+    └─ ページ再読み込み / テーブル再描画
     ↓
 [ユーザーへフィードバック]
 ```
@@ -331,47 +384,42 @@ const EMAIL_CONFIG = {
 ```
 KUBOXT-Vehicle-dispatch-plan/
 │
-├── README.md                          # このファイル
-├── appsscript.json                    # GAS設定ファイル
+├── README.md                          # このファイル (プロジェクトドキュメント)
+├── appsscript.json                    # GAS設定ファイル (V8ランタイム、タイムゾーン等)
 │
 ├── バックエンド (GAS)
-│   ├── Config.gs                      # 設定定数
-│   ├── Code.gs                        # エントリーポイント・API
-│   ├── DataHandler.gs                 # データアクセス層
-│   ├── Utils.gs                       # ユーティリティ関数
-│   └── NotificationBatch.gs           # 日次通知バッチ
+│   ├── Config.gs                      # 設定定数 (スプレッドシートID、シート名、カラム定義)
+│   ├── Code.gs                        # エントリーポイント (doGet、APIエンドポイント群)
+│   ├── DataHandler.gs                 # データアクセス層 (CRUD操作、ビジネスロジック)
+│   ├── Utils.gs                       # ユーティリティ関数 (日付処理、バリデーション、ID生成)
+│   └── NotificationBatch.gs           # 日次通知バッチ (メール送信、PDF生成、トリガー管理)
 │
-├── フロントエンド (HTML)
-│   ├── index.html                     # SPAベース（常に配信）
-│   ├── app.html                       # クライアントロジック
-│   ├── styles.html                    # カスタムCSS
-│   │
-│   ├── ページコンテンツ
-│   │   ├── request-form-content.html     # 依頼登録画面
-│   │   ├── request-list-content.html     # 依頼一覧画面
-│   │   └── dispatch-plan-content.html    # 配車計画画面
-│   │
-│   └── 旧ファイル（参考用・削除可）
-│       ├── request-form.html
-│       ├── request-list.html
-│       └── dispatch-plan.html
-│
-└── ドキュメント
-    └── README.md
+└── フロントエンド (HTML)
+    ├── index.html                     # SPAベーステンプレート (ナビゲーション、フッター)
+    ├── app.html                       # クライアントロジック (app.js: API通信、UI制御、ページモジュール)
+    ├── styles.html                    # カスタムCSS (レイアウト、カード、テーブル等のスタイル)
+    │
+    └── ページコンテンツ (SPA用の動的読み込みHTML)
+        ├── request-form-content.html     # 依頼登録・編集画面 (フォーム、オートコンプリート)
+        ├── request-list-content.html     # 依頼一覧画面 (テーブル、フィルター、編集・削除ボタン)
+        └── dispatch-plan-content.html    # 配車計画画面 (2タブ: 当日計画/未配車依頼)
 ```
 
-### ファイルの役割
+### ファイルの役割詳細
 
-| ファイル | 役割 | 重要度 |
-|---------|------|-------|
-| **Config.gs** | スプレッドシートIDやシート名などの設定 | ⭐⭐⭐ |
-| **Code.gs** | doGet()、API関数、ページ配信 | ⭐⭐⭐ |
-| **DataHandler.gs** | CRUD操作、ビジネスロジック | ⭐⭐⭐ |
-| **Utils.gs** | 日付処理、バリデーション、ID生成 | ⭐⭐ |
-| **NotificationBatch.gs** | メール送信、PDF生成 | ⭐ |
-| **index.html** | SPAのベースHTML | ⭐⭐⭐ |
-| **app.html** | クライアント側のメインロジック | ⭐⭐⭐ |
-| **styles.html** | カスタムスタイル | ⭐⭐ |
+| ファイル | 役割 | 主要機能 | 重要度 |
+|---------|------|---------|-------|
+| **Config.gs** | 設定定数管理 | スプレッドシートID、シート名、カラムインデックス定義、エラーメッセージ | ⭐⭐⭐ |
+| **Code.gs** | APIエンドポイント | doGet()、getPageContent()、api* 関数群（30以上のAPI関数） | ⭐⭐⭐ |
+| **DataHandler.gs** | データアクセス層 | getAllRequests()、createRequest()、assignVehicleToRequest()、getAvailableVehiclesForRequest() 等 | ⭐⭐⭐ |
+| **Utils.gs** | ユーティリティ | getSpreadsheet()、formatDate()、validateRequestData()、isDateRangeOverlapping()、generateRequestId() | ⭐⭐⭐ |
+| **NotificationBatch.gs** | 日次通知 | sendDailyDispatchNotifications()、createDispatchPlanPdf()、setupDailyNotificationTrigger() | ⭐⭐ |
+| **index.html** | SPAベース | ナビゲーションバー、モバイルメニュー、フッター、APP_CONFIG定義 | ⭐⭐⭐ |
+| **app.html** | クライアントロジック | Navigation、API、UI、RequestForm、RequestList、DispatchPlan モジュール (1380行) | ⭐⭐⭐ |
+| **styles.html** | スタイル定義 | カスタムCSS（カード、テーブル、ローディング、レスポンシブ対応） | ⭐⭐ |
+| **request-form-content.html** | 依頼フォーム | 入力フォーム、住所オートコンプリート、日付・時刻ピッカー | ⭐⭐⭐ |
+| **request-list-content.html** | 依頼一覧 | テーブル表示、フィルター、編集・削除ボタン | ⭐⭐⭐ |
+| **dispatch-plan-content.html** | 配車計画 | 2タブUI、未配車カード、車両選択パネル | ⭐⭐⭐ |
 
 ---
 
@@ -532,15 +580,78 @@ testSendNotification()
 
 ---
 
+## 💡 実装詳細・技術ノート
+
+### 1. ID生成ロジック (Utils.gs)
+依頼IDは `generateRequestId()` 関数で自動採番されます。
+- **フォーマット**: `REQ{YYYYMMDD}-{連番4桁}`
+- **例**: `REQ20251117-0001`
+- **採番方式**: 日付ごとに連番をリセット（当日の最大連番+1）
+
+### 2. 車両割り当てロジック (DataHandler.gs)
+`getAvailableVehiclesForRequest()` 関数が以下の条件で利用可能な車両を抽出します:
+1. **車種適合チェック**: 車両マスタの「対応可能依頼」列(カンマ区切り)に依頼車種が含まれるか
+2. **期間重複チェック**: `isDateRangeOverlapping()` により、積込日〜荷卸日の範囲で他の依頼と重複していないか
+
+### 3. SPA実装方式 (index.html, app.html)
+- **初回レンダリング**: `doGet()` が `index.html` を評価し、初期ページの `getPageContent(currentPage)` を埋め込み
+- **ページ遷移**: `Navigation.navigateToPage()` が `google.script.run.getPageContent(pageName)` を呼び出し、HTMLを動的に取得
+- **状態管理**: `AppState` オブジェクトでマスタデータ、選択中の依頼などを保持
+- **ナビゲーション重複防止**: `_navigating` フラグで連続クリックを防止
+
+### 4. 日付シリアライゼーション (Code.gs)
+GASとクライアント間でDateオブジェクトをやり取りする際の注意点:
+- **GAS → Client**: `formatDate()` / `formatTime()` でISO文字列に変換
+- **Client → GAS**: `new Date(dateString)` でDateオブジェクトに復元
+- **理由**: `google.script.run` はDateオブジェクトを直接シリアライズできないため
+
+### 5. PDF生成方式 (NotificationBatch.gs)
+`createDispatchPlanPdf()` 関数の処理:
+1. HTMLコンテンツを文字列として生成（テーブル、スタイル含む）
+2. `Utilities.newBlob(htmlContent, 'text/html')` でHTML Blobを作成
+3. `.getAs('application/pdf')` でPDFに変換
+4. `.setName()` でファイル名を設定し、メール添付
+
+### 6. オートコンプリート実装 (app.html, v3.3)
+Materialize CSS の Autocomplete コンポーネントを使用:
+- **データソース**: `apiGetUniqueAddresses()` でT_荷主依頼データから過去の住所を取得
+- **対象フィールド**: 積込地1/2、荷卸地1/2
+- **オプション**: `minLength: 1`（1文字から候補表示）、`limit: 5`（最大5件表示）
+
+### 7. トリガー管理 (NotificationBatch.gs)
+日次通知のトリガー設定:
+```javascript
+// トリガーの作成
+setupDailyNotificationTrigger()  // 毎日18時に sendDailyDispatchNotifications() を実行
+
+// トリガーの削除
+removeDailyNotificationTrigger()
+```
+
+### 8. エラーハンドリング方針
+- **すべてのAPI関数**: try-catch でラップし、`{ success: false, message: error.message }` を返却
+- **クライアント側**: `API.call()` が Promise を返し、失敗時は reject
+- **ユーザーへのフィードバック**: `UI.showError()` / `UI.showSuccess()` でトースト通知
+
+### 9. パフォーマンス最適化
+- **一括取得**: `getAllRequests()` で全件取得後、クライアント側でフィルタリング
+- **Promiseの並列実行**: マスタデータ取得時に `Promise.all([...])` を使用
+- **キャッシュ**: `AppState` にマスタデータをキャッシュし、ページ遷移時に再利用
+
+---
+
 ## 🚀 今後の拡張案
 
-- [ ] ダッシュボード機能（配車率の可視化）
-- [ ] カレンダービュー
-- [ ] ドライバーアプリ（モバイル対応）
-- [ ] GPS連携
-- [ ] 売上・経費管理
-- [ ] デジタコデータの自動取り込み
-- [ ] 多言語対応
+- [ ] ダッシュボード機能（配車率の可視化、月次レポート）
+- [ ] カレンダービュー（カレンダー形式で配車計画を表示）
+- [ ] ドライバーアプリ（モバイル対応、スマホから配車確認・完了報告）
+- [ ] GPS連携（リアルタイム位置追跡）
+- [ ] 売上・経費管理（運送売上、燃料費等の自動計算）
+- [ ] デジタコデータの自動取り込み（運行記録の自動入力）
+- [ ] 多言語対応（英語、中国語等）
+- [ ] CSVエクスポート/インポート機能
+- [ ] 車両稼働率分析レポート
+- [ ] プッシュ通知（LINE連携等）
 
 ---
 
@@ -593,6 +704,33 @@ SOFTWARE.
 
 ---
 
-**開発者**: はた (山陶)  
-**最終更新**: 2025年11月6日  
-**バージョン**: 1.0.0
+**開発者**: はた (山陶)
+**最終更新**: 2025年11月17日
+**バージョン**: 3.3 (住所オートコンプリート機能追加)
+
+---
+
+## 📊 技術仕様サマリー
+
+| 項目 | 詳細 |
+|------|------|
+| **ランタイム** | Google Apps Script V8 |
+| **言語** | JavaScript (ES6+), HTML5, CSS3 |
+| **データベース** | Google Spreadsheet (3シート) |
+| **UIフレームワーク** | Materialize CSS 1.0.0 |
+| **アーキテクチャ** | SPA (Single Page Application) |
+| **通信方式** | `google.script.run` (非同期Promise) |
+| **認証** | Google OAuth (自動) |
+| **デプロイ** | Webアプリ (executeAs: USER_ACCESSING) |
+| **総コード量** | 約3,500行 (GAS: 1,200行 / HTML+JS: 2,300行) |
+
+---
+
+## 🏆 主要な技術的特徴
+
+1. **完全サーバーレス**: インフラ構築不要、GASのみで動作
+2. **リアルタイムデータ同期**: Spreadsheetを直接読み書きし、常に最新データを表示
+3. **レスポンシブデザイン**: PC・タブレット・スマホ対応
+4. **エラーハンドリング**: 全API関数で統一されたエラー処理
+5. **拡張性**: モジュール化された設計で機能追加が容易
+6. **日本語完全対応**: UI、ログ、エラーメッセージすべて日本語

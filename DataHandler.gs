@@ -300,6 +300,111 @@ function createRequest(requestData) {
 }
 
 /**
+ * ★★★ NEW: 複数の依頼を一括登録
+ * @param {Array<Object>} requestsArray - 依頼データオブジェクトの配列
+ * @returns {Object} { success: boolean, requestIds: Array, message: string }
+ */
+function createRequestBatch(requestsArray) {
+  try {
+    logMessage('INFO', `createRequestBatch: 一括登録開始 (件数: ${requestsArray.length})`);
+
+    if (!requestsArray || requestsArray.length === 0) {
+      return {
+        success: false,
+        requestIds: [],
+        message: '登録する依頼データがありません'
+      };
+    }
+
+    const sheet = getSheet(SHEET_NAMES.REQUESTS);
+    const requestIds = [];
+    const rowsData = [];
+
+    // 連番の開始値を取得（最初のIDを生成）
+    const firstRequestId = generateRequestId();
+    const dateStr = Utilities.formatDate(new Date(), TIMEZONE, 'yyyyMMdd');
+    const firstSeqNum = parseInt(firstRequestId.split('-')[1]);
+
+    // 各依頼データを処理
+    for (let i = 0; i < requestsArray.length; i++) {
+      const requestData = requestsArray[i];
+
+      // ★ 荷主IDから荷主名を取得
+      const shipper = getShipperById(requestData.shipper);
+      if (!shipper) {
+        return {
+          success: false,
+          requestIds: [],
+          message: `依頼${i + 1}件目: 指定された荷主が見つかりません`
+        };
+      }
+      const shipperName = shipper.shipperName;
+
+      // バリデーション
+      const validation = validateRequestData(requestData);
+      if (!validation.isValid) {
+        return {
+          success: false,
+          requestIds: [],
+          message: `依頼${i + 1}件目: ${ERROR_MESSAGES.VALIDATION_ERROR}${validation.errors.join(', ')}`,
+          errors: validation.errors
+        };
+      }
+
+      // 連番のIDを生成
+      const seqNum = firstSeqNum + i;
+      const requestId = `REQ${dateStr}-${String(seqNum).padStart(4, '0')}`;
+      requestIds.push(requestId);
+
+      // 行データを構築
+      const rowData = [
+        requestId,                           // 依頼ID
+        requestData.receivedDate || new Date(), // 受付日
+        shipperName,                         // ★ 荷主名
+        requestData.loadDate,                // 積込日
+        requestData.loadTime,                // 積込時間
+        requestData.loadPlace1,              // 積込地1
+        requestData.loadPlace2 || '',        // 積込地2
+        requestData.productName,             // 品名
+        requestData.unloadDate,              // 荷卸日
+        requestData.unloadTime,              // 荷卸時間
+        requestData.unloadPlace1,            // 荷卸地1
+        requestData.unloadPlace2 || '',      // 荷卸地2
+        requestData.requestType,             // 依頼車種
+        '',                                  // ナンバー（空）
+        '',                                  // 車番（空）
+        '',                                  // 車種（空）
+        ''                                   // 運転手（空）
+      ];
+
+      rowsData.push(rowData);
+    }
+
+    // 一括でスプレッドシートに追加
+    if (rowsData.length > 0) {
+      const lastRow = sheet.getLastRow();
+      sheet.getRange(lastRow + 1, 1, rowsData.length, rowsData[0].length).setValues(rowsData);
+    }
+
+    logMessage('INFO', `createRequestBatch: ${requestIds.length}件の依頼を一括登録しました (IDs: ${requestIds[0]} ～ ${requestIds[requestIds.length - 1]})`);
+
+    return {
+      success: true,
+      requestIds: requestIds,
+      message: SUCCESS_MESSAGES.SAVE_SUCCESS
+    };
+
+  } catch (error) {
+    logMessage('ERROR', 'createRequestBatch: ' + error.toString());
+    return {
+      success: false,
+      requestIds: [],
+      message: ERROR_MESSAGES.SAVE_ERROR + error.message
+    };
+  }
+}
+
+/**
  * ★★★ NEW: 依頼データを更新
  * @param {Object} requestData - 依頼データオブジェクト (requestIdを含む)
  * @returns {Object} { success: boolean, message: string }
@@ -307,7 +412,7 @@ function createRequest(requestData) {
 function updateRequest(requestData) {
   try {
     logMessage('INFO', `updateRequest: 依頼更新開始 (ID: ${requestData.requestId})`);
-    
+
     // ★ 荷主IDから荷主名を取得
     const shipper = getShipperById(requestData.shipper); // requestData.shipper は shipperId
     if (!shipper) {
@@ -499,6 +604,63 @@ function assignVehicleToRequest(requestId, vehicleNumber) {
     
   } catch (error) {
     logMessage('ERROR', 'assignVehicleToRequest: ' + error.toString());
+    return {
+      success: false,
+      message: ERROR_MESSAGES.SAVE_ERROR + error.message
+    };
+  }
+}
+
+/**
+ * ★★★ NEW: 依頼に傭車を割り当て（運転手名を指定）
+ * @param {string} requestId - 依頼ID
+ * @param {string} driverName - 運転手名
+ * @returns {Object} { success: boolean, message: string }
+ */
+function assignCharterVehicleToRequest(requestId, driverName) {
+  try {
+    logMessage('INFO', `assignCharterVehicleToRequest: 依頼 ${requestId} に傭車を割り当て（運転手: ${driverName}）`);
+
+    if (!isNotEmpty(requestId)) {
+      throw new Error('依頼IDが指定されていません');
+    }
+    if (!isNotEmpty(driverName)) {
+      throw new Error('運転手名が指定されていません');
+    }
+
+    // 依頼データを取得
+    const targetRequest = getRequestById(requestId);
+
+    if (!targetRequest) {
+      return {
+        success: false,
+        message: '指定された依頼が見つかりません'
+      };
+    }
+
+    // ★ 傭車の固定情報
+    const charterVehicleNumber = '999999';
+    const charterRadioNumber = '999';
+    const charterVehicleType = '傭車';
+
+    // 依頼データを更新
+    const sheet = getSheet(SHEET_NAMES.REQUESTS);
+    const rowIndex = targetRequest.rowIndex;
+
+    sheet.getRange(rowIndex, REQUEST_COLUMNS.VEHICLE_NUMBER + 1).setValue(charterVehicleNumber);
+    sheet.getRange(rowIndex, REQUEST_COLUMNS.VEHICLE_PLATE + 1).setValue(charterRadioNumber);
+    sheet.getRange(rowIndex, REQUEST_COLUMNS.VEHICLE_TYPE + 1).setValue(charterVehicleType);
+    sheet.getRange(rowIndex, REQUEST_COLUMNS.DRIVER_NAME + 1).setValue(driverName);
+
+    logMessage('INFO', `assignCharterVehicleToRequest: 傭車割り当て完了（運転手: ${driverName}）`);
+
+    return {
+      success: true,
+      message: SUCCESS_MESSAGES.UPDATE_SUCCESS
+    };
+
+  } catch (error) {
+    logMessage('ERROR', 'assignCharterVehicleToRequest: ' + error.toString());
     return {
       success: false,
       message: ERROR_MESSAGES.SAVE_ERROR + error.message
