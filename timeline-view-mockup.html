@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>配車計画（タイムライン） - モックアップ</title>
+
+    <!-- Materialize CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <!-- Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Noto+Sans+JP:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --primary-color: #2196F3;
+            --primary-dark: #1976D2;
+            --primary-light: #BBDEFB;
+            --accent-color: #FF9800;
+            --success-color: #4CAF50;
+            --warning-color: #FFC107;
+            --error-color: #F44336;
+            --text-primary: #212121;
+            --text-secondary: #757575;
+            --divider-color: #BDBDBD;
+            --background-color: #FAFAFA;
+            --card-background: #FFFFFF;
+            --timeline-hour-width: 80px;
+            --vehicle-row-height: 60px;
+            --vehicle-label-width: 200px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Roboto', 'Noto Sans JP', sans-serif;
+            background-color: var(--background-color);
+            margin: 0;
+            padding: 0;
+        }
+
+        .container-fluid {
+            width: 100%;
+            padding: 0;
+            margin: 0;
+        }
+
+        /* ヘッダーエリア */
+        .timeline-header {
+            background-color: var(--card-background);
+            padding: 16px 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .timeline-header h5 {
+            margin: 0 0 16px 0;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .header-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+        }
+
+        .date-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .current-date {
+            font-size: 18px;
+            font-weight: 500;
+            color: var(--text-primary);
+            min-width: 150px;
+            text-align: center;
+        }
+
+        .filter-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .filter-label {
+            color: var(--text-secondary);
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .chip-filter {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .chip-filter.active {
+            background-color: var(--primary-color) !important;
+            color: white !important;
+        }
+
+        /* タイムライン本体 */
+        .timeline-container {
+            margin: 20px;
+            background-color: var(--card-background);
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+
+        .timeline-wrapper {
+            position: relative;
+            overflow: auto;
+            max-height: calc(100vh - 400px);
+            min-height: 400px;
+        }
+
+        .timeline-grid {
+            display: flex;
+            position: relative;
+            min-width: fit-content;
+        }
+
+        /* 車両ラベル列（固定） */
+        .vehicle-labels {
+            position: sticky;
+            left: 0;
+            z-index: 50;
+            background-color: var(--card-background);
+            border-right: 2px solid var(--divider-color);
+            width: var(--vehicle-label-width);
+            flex-shrink: 0;
+        }
+
+        .vehicle-label-header {
+            height: 50px;
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            background-color: var(--primary-light);
+            border-bottom: 2px solid var(--divider-color);
+            font-weight: 500;
+            color: var(--text-primary);
+            position: sticky;
+            top: 0;
+            z-index: 60;
+        }
+
+        .vehicle-label {
+            height: var(--vehicle-row-height);
+            padding: 8px 12px;
+            border-bottom: 1px solid #E0E0E0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            background-color: var(--card-background);
+        }
+
+        .vehicle-label:hover {
+            background-color: #F5F5F5;
+        }
+
+        .vehicle-name {
+            font-weight: 500;
+            color: var(--text-primary);
+            font-size: 14px;
+        }
+
+        .vehicle-info {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        /* タイムライングリッド */
+        .timeline-content {
+            flex: 1;
+            position: relative;
+        }
+
+        .timeline-hours {
+            position: sticky;
+            top: 0;
+            z-index: 40;
+            display: flex;
+            background-color: var(--primary-light);
+            border-bottom: 2px solid var(--divider-color);
+            height: 50px;
+        }
+
+        .hour-cell {
+            width: var(--timeline-hour-width);
+            flex-shrink: 0;
+            border-right: 1px solid var(--divider-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 500;
+            color: var(--text-primary);
+            font-size: 13px;
+        }
+
+        .timeline-rows {
+            position: relative;
+        }
+
+        .timeline-row {
+            height: var(--vehicle-row-height);
+            border-bottom: 1px solid #E0E0E0;
+            position: relative;
+            display: flex;
+        }
+
+        .timeline-row:hover {
+            background-color: #FAFAFA;
+        }
+
+        /* 時間グリッド背景 */
+        .hour-slot {
+            width: var(--timeline-hour-width);
+            height: 100%;
+            border-right: 1px solid #EEEEEE;
+            flex-shrink: 0;
+        }
+
+        /* 配車ブロック */
+        .schedule-block {
+            position: absolute;
+            top: 8px;
+            height: calc(var(--vehicle-row-height) - 16px);
+            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+            border-radius: 4px;
+            padding: 8px 12px;
+            color: white;
+            font-size: 12px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .schedule-block:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        .schedule-block.charter {
+            background: linear-gradient(135deg, var(--accent-color) 0%, #F57C00 100%);
+        }
+
+        .schedule-block-title {
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .schedule-block-location {
+            font-size: 11px;
+            opacity: 0.9;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-top: 2px;
+        }
+
+        /* 未配車案件エリア */
+        .unassigned-section {
+            margin: 20px;
+            background-color: var(--card-background);
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            padding: 16px;
+        }
+
+        .unassigned-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .unassigned-header h6 {
+            margin: 0;
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+
+        .unassigned-count {
+            background-color: var(--error-color);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .unassigned-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .unassigned-card {
+            border: 1px solid var(--divider-color);
+            border-radius: 4px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background-color: white;
+        }
+
+        .unassigned-card:hover {
+            border-color: var(--primary-color);
+            box-shadow: 0 2px 8px rgba(33,150,243,0.2);
+            transform: translateY(-1px);
+        }
+
+        .unassigned-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .unassigned-id {
+            font-weight: 500;
+            color: var(--primary-color);
+            font-size: 13px;
+        }
+
+        .unassigned-time {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .unassigned-route {
+            font-size: 12px;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .unassigned-shipper {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        /* レスポンシブ対応 */
+        @media screen and (max-width: 768px) {
+            :root {
+                --timeline-hour-width: 60px;
+                --vehicle-label-width: 150px;
+                --vehicle-row-height: 50px;
+            }
+
+            .header-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .filter-controls {
+                justify-content: center;
+            }
+
+            .unassigned-list {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* スクロールバーのスタイリング */
+        .timeline-wrapper::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        .timeline-wrapper::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        .timeline-wrapper::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 5px;
+        }
+
+        .timeline-wrapper::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+
+        /* ローディング表示 */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 9999;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+    </style>
+</head>
+<body>
+    <!-- ローディングオーバーレイ -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="preloader-wrapper big active">
+            <div class="spinner-layer spinner-blue-only">
+                <div class="circle-clipper left">
+                    <div class="circle"></div>
+                </div>
+                <div class="gap-patch">
+                    <div class="circle"></div>
+                </div>
+                <div class="circle-clipper right">
+                    <div class="circle"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <!-- ヘッダーエリア -->
+        <div class="timeline-header">
+            <h5>配車計画（タイムライン）</h5>
+
+            <div class="header-controls">
+                <!-- 日付コントロール -->
+                <div class="date-controls">
+                    <button class="btn-small waves-effect waves-light" onclick="changeDate(-1)">
+                        <i class="material-icons left">chevron_left</i>前日
+                    </button>
+                    <div class="current-date" id="currentDate">2025年12月3日（火）</div>
+                    <button class="btn-small waves-effect waves-light" onclick="changeDate(1)">
+                        翌日<i class="material-icons right">chevron_right</i>
+                    </button>
+                    <button class="btn-small waves-effect waves-light blue lighten-1" onclick="showDatePicker()">
+                        <i class="material-icons">calendar_today</i>
+                    </button>
+                </div>
+
+                <!-- フィルターコントロール -->
+                <div class="filter-controls">
+                    <span class="filter-label">車両種別:</span>
+                    <div class="chip chip-filter active" onclick="toggleFilter(this, 'all')">すべて</div>
+                    <div class="chip chip-filter" onclick="toggleFilter(this, '4t')">4t車</div>
+                    <div class="chip chip-filter" onclick="toggleFilter(this, '2t')">2t車</div>
+                    <div class="chip chip-filter" onclick="toggleFilter(this, '10t')">10t車</div>
+                    <div class="chip chip-filter" onclick="toggleFilter(this, 'charter')">傭車</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- タイムライン本体 -->
+        <div class="timeline-container">
+            <div class="timeline-wrapper" id="timelineWrapper">
+                <div class="timeline-grid">
+                    <!-- 車両ラベル列 -->
+                    <div class="vehicle-labels">
+                        <div class="vehicle-label-header">車両・ドライバー</div>
+                        <div id="vehicleLabelsList"></div>
+                    </div>
+
+                    <!-- タイムライングリッド -->
+                    <div class="timeline-content">
+                        <!-- 時間軸ヘッダー -->
+                        <div class="timeline-hours" id="timelineHours"></div>
+
+                        <!-- タイムライン行 -->
+                        <div class="timeline-rows" id="timelineRows"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 未配車案件エリア -->
+        <div class="unassigned-section">
+            <div class="unassigned-header">
+                <h6>未配車案件</h6>
+                <span class="unassigned-count" id="unassignedCount">5件</span>
+            </div>
+            <div class="unassigned-list" id="unassignedList"></div>
+        </div>
+    </div>
+
+    <!-- Materialize JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+
+    <script>
+        // ===== ダミーデータ =====
+        const MOCK_VEHICLES = [
+            { id: 'V001', name: '横浜1号車', driver: '田中 太郎', type: '4t', capacity: '4t' },
+            { id: 'V002', name: '横浜2号車', driver: '佐藤 花子', type: '4t', capacity: '4t' },
+            { id: 'V003', name: '川崎1号車', driver: '鈴木 一郎', type: '2t', capacity: '2t' },
+            { id: 'V004', name: '東京1号車', driver: '高橋 次郎', type: '10t', capacity: '10t' },
+            { id: 'V005', name: '品川1号車', driver: '伊藤 三郎', type: '4t', capacity: '4t' },
+            { id: 'V006', name: '渋谷1号車', driver: '山本 四郎', type: '2t', capacity: '2t' },
+            { id: 'V007', name: '新宿1号車', driver: '中村 五郎', type: '4t', capacity: '4t' },
+            { id: 'V008', name: '池袋1号車', driver: '小林 六郎', type: '10t', capacity: '10t' },
+            { id: 'CH01', name: '傭車A', driver: '外注ドライバーA', type: 'charter', capacity: '4t' },
+            { id: 'CH02', name: '傭車B', driver: '外注ドライバーB', type: 'charter', capacity: '2t' },
+        ];
+
+        const MOCK_SCHEDULES = [
+            { vehicleId: 'V001', startTime: 9, duration: 3, title: 'REQ20251203-0001', location: '横浜→川崎', shipper: 'ABC運輸' },
+            { vehicleId: 'V001', startTime: 13, duration: 2, title: 'REQ20251203-0005', location: '品川→渋谷', shipper: 'XYZ物流' },
+            { vehicleId: 'V002', startTime: 8, duration: 4, title: 'REQ20251203-0002', location: '東京→埼玉', shipper: 'ABC運輸' },
+            { vehicleId: 'V002', startTime: 14, duration: 3, title: 'REQ20251203-0008', location: '池袋→新宿', shipper: 'DEF商事' },
+            { vehicleId: 'V003', startTime: 10, duration: 2, title: 'REQ20251203-0003', location: '川崎→横浜', shipper: 'GHI運送' },
+            { vehicleId: 'V004', startTime: 8, duration: 5, title: 'REQ20251203-0004', location: '千葉→茨城', shipper: 'XYZ物流' },
+            { vehicleId: 'V005', startTime: 11, duration: 2, title: 'REQ20251203-0009', location: '品川→目黒', shipper: 'ABC運輸' },
+            { vehicleId: 'V006', startTime: 9, duration: 3, title: 'REQ20251203-0010', location: '渋谷→原宿', shipper: 'JKL配送' },
+            { vehicleId: 'V007', startTime: 8, duration: 2, title: 'REQ20251203-0011', location: '新宿→中野', shipper: 'MNO運輸' },
+            { vehicleId: 'V007', startTime: 11, duration: 3, title: 'REQ20251203-0015', location: '高円寺→阿佐ヶ谷', shipper: 'ABC運輸' },
+            { vehicleId: 'V008', startTime: 9, duration: 6, title: 'REQ20251203-0012', location: '池袋→群馬', shipper: 'PQR物流' },
+            { vehicleId: 'CH01', startTime: 10, duration: 3, title: 'REQ20251203-0013', location: '横浜→東京', shipper: 'STU運送' },
+            { vehicleId: 'CH02', startTime: 13, duration: 2, title: 'REQ20251203-0014', location: '川崎→品川', shipper: 'VWX配送' },
+        ];
+
+        const MOCK_UNASSIGNED = [
+            { id: 'REQ20251203-0020', time: '09:00-11:00', route: '横浜市→千葉市', shipper: 'ABC運輸', vehicleType: '4t' },
+            { id: 'REQ20251203-0021', time: '13:00-15:00', route: '東京都→神奈川県', shipper: 'XYZ物流', vehicleType: '2t' },
+            { id: 'REQ20251203-0022', time: '10:00-14:00', route: '埼玉県→群馬県', shipper: 'DEF商事', vehicleType: '10t' },
+            { id: 'REQ20251203-0023', time: '15:00-17:00', route: '川崎市→横浜市', shipper: 'GHI運送', vehicleType: '4t' },
+            { id: 'REQ20251203-0024', time: '08:00-10:00', route: '品川区→渋谷区', shipper: 'JKL配送', vehicleType: '2t' },
+        ];
+
+        // ===== 設定 =====
+        const START_HOUR = 8;
+        const END_HOUR = 19;
+        const HOUR_WIDTH = 80; // CSS変数と同期
+
+        let currentFilter = 'all';
+        let currentDate = new Date(2025, 11, 3); // 2025年12月3日
+
+        // ===== 初期化 =====
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeTimeline();
+            renderUnassignedList();
+        });
+
+        // ===== タイムライン初期化 =====
+        function initializeTimeline() {
+            renderTimelineHours();
+            renderVehicleLabels();
+            renderTimelineRows();
+        }
+
+        // ===== 時間軸ヘッダー描画 =====
+        function renderTimelineHours() {
+            const hoursContainer = document.getElementById('timelineHours');
+            hoursContainer.innerHTML = '';
+
+            for (let hour = START_HOUR; hour <= END_HOUR; hour++) {
+                const hourCell = document.createElement('div');
+                hourCell.className = 'hour-cell';
+                hourCell.textContent = `${hour}:00`;
+                hoursContainer.appendChild(hourCell);
+            }
+        }
+
+        // ===== 車両ラベル描画 =====
+        function renderVehicleLabels() {
+            const labelsContainer = document.getElementById('vehicleLabelsList');
+            labelsContainer.innerHTML = '';
+
+            const filteredVehicles = getFilteredVehicles();
+
+            filteredVehicles.forEach(vehicle => {
+                const label = document.createElement('div');
+                label.className = 'vehicle-label';
+                label.innerHTML = `
+                    <div class="vehicle-name">${vehicle.name}</div>
+                    <div class="vehicle-info">${vehicle.driver} / ${vehicle.capacity}</div>
+                `;
+                labelsContainer.appendChild(label);
+            });
+        }
+
+        // ===== タイムライン行描画 =====
+        function renderTimelineRows() {
+            const rowsContainer = document.getElementById('timelineRows');
+            rowsContainer.innerHTML = '';
+
+            const filteredVehicles = getFilteredVehicles();
+
+            filteredVehicles.forEach(vehicle => {
+                const row = document.createElement('div');
+                row.className = 'timeline-row';
+                row.dataset.vehicleId = vehicle.id;
+
+                // 時間スロット背景
+                for (let hour = START_HOUR; hour <= END_HOUR; hour++) {
+                    const slot = document.createElement('div');
+                    slot.className = 'hour-slot';
+                    row.appendChild(slot);
+                }
+
+                // 配車ブロック追加
+                const vehicleSchedules = MOCK_SCHEDULES.filter(s => s.vehicleId === vehicle.id);
+                vehicleSchedules.forEach(schedule => {
+                    const block = createScheduleBlock(schedule, vehicle.type === 'charter');
+                    row.appendChild(block);
+                });
+
+                rowsContainer.appendChild(row);
+            });
+        }
+
+        // ===== 配車ブロック作成 =====
+        function createScheduleBlock(schedule, isCharter) {
+            const block = document.createElement('div');
+            block.className = 'schedule-block' + (isCharter ? ' charter' : '');
+
+            // 位置とサイズ計算
+            const left = (schedule.startTime - START_HOUR) * HOUR_WIDTH;
+            const width = schedule.duration * HOUR_WIDTH - 4; // 4pxはマージン
+
+            block.style.left = `${left}px`;
+            block.style.width = `${width}px`;
+
+            block.innerHTML = `
+                <div class="schedule-block-title">${schedule.title}</div>
+                <div class="schedule-block-location">${schedule.location}</div>
+            `;
+
+            // クリックイベント
+            block.onclick = function() {
+                M.toast({html: `案件: ${schedule.title}<br>${schedule.location}<br>荷主: ${schedule.shipper}`, classes: 'rounded'});
+            };
+
+            return block;
+        }
+
+        // ===== 未配車リスト描画 =====
+        function renderUnassignedList() {
+            const listContainer = document.getElementById('unassignedList');
+            const countElement = document.getElementById('unassignedCount');
+
+            listContainer.innerHTML = '';
+            countElement.textContent = `${MOCK_UNASSIGNED.length}件`;
+
+            MOCK_UNASSIGNED.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'unassigned-card';
+                card.innerHTML = `
+                    <div class="unassigned-card-header">
+                        <span class="unassigned-id">${item.id}</span>
+                        <span class="unassigned-time">${item.time}</span>
+                    </div>
+                    <div class="unassigned-route">${item.route}</div>
+                    <div class="unassigned-shipper">${item.shipper} / ${item.vehicleType}</div>
+                `;
+
+                card.onclick = function() {
+                    M.toast({html: `未配車案件: ${item.id}<br>${item.route}`, classes: 'rounded'});
+                };
+
+                listContainer.appendChild(card);
+            });
+        }
+
+        // ===== フィルター機能 =====
+        function getFilteredVehicles() {
+            if (currentFilter === 'all') {
+                return MOCK_VEHICLES;
+            }
+            return MOCK_VEHICLES.filter(v => v.type === currentFilter);
+        }
+
+        function toggleFilter(element, filterType) {
+            // すべてのchipを非アクティブ化
+            document.querySelectorAll('.chip-filter').forEach(chip => {
+                chip.classList.remove('active');
+            });
+
+            // クリックされたchipをアクティブ化
+            element.classList.add('active');
+
+            // フィルター適用
+            currentFilter = filterType;
+
+            // 再描画
+            renderVehicleLabels();
+            renderTimelineRows();
+
+            M.toast({html: `フィルター: ${element.textContent}`, classes: 'rounded', displayLength: 2000});
+        }
+
+        // ===== 日付変更 =====
+        function changeDate(days) {
+            currentDate.setDate(currentDate.getDate() + days);
+            updateDateDisplay();
+
+            // ローディング表示のデモ
+            showLoading();
+            setTimeout(() => {
+                hideLoading();
+                M.toast({html: `${currentDate.toLocaleDateString('ja-JP')}のデータを読み込みました`, classes: 'rounded'});
+            }, 500);
+        }
+
+        function updateDateDisplay() {
+            const dateStr = currentDate.toLocaleDateString('ja-JP', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                weekday: 'short'
+            });
+            document.getElementById('currentDate').textContent = dateStr;
+        }
+
+        function showDatePicker() {
+            M.toast({html: 'カレンダーピッカー機能（実装予定）', classes: 'rounded'});
+        }
+
+        // ===== ローディング表示 =====
+        function showLoading() {
+            document.getElementById('loadingOverlay').classList.add('active');
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.remove('active');
+        }
+    </script>
+</body>
+</html>
